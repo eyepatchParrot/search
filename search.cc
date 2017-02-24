@@ -1,3 +1,4 @@
+#include <tuple>
 #include <numeric>
 #include <cstring>
 #include <cstdlib>
@@ -37,11 +38,45 @@ int binSearch(const ll k, const std::vector<ll>& a) {
   return idx;
 }
 
+struct PerfStats {
+  std::string name;
+  std::vector<double> t;
+  std::vector<ll> v;
+};
+
+PerfStats perfStats(std::vector<ll>& time, const std::vector<ll>& array, const std::vector<ll>& order, const std::string& name) {
+  ll nNums = array.size();
+  std::vector<std::tuple<ll, int> > time_ix;
+  ll sum = 0;
+  for (ll i = 0; i < nNums; i++) {
+    int j = binSearch(order[i], array);
+    time_ix.push_back(std::make_tuple(time.back(), j));
+    sum += time.back();
+    time.pop_back();
+  }
+
+  std::sort(time_ix.begin(), time_ix.end());
+  int ix90 = 0.9 * nNums, ix99 = 0.99 * nNums, ix999 = 0.999 * nNums;
+
+  PerfStats ret;
+  ret.name = name;
+  ret.t.push_back((double)sum / nNums);
+  ret.t.push_back(std::get<0>(time_ix[ix90]));
+  ret.t.push_back(std::get<0>(time_ix[ix99]));
+  ret.t.push_back(std::get<0>(time_ix[ix999]));
+  ret.t.push_back(std::get<0>(time_ix.back()));
+  ret.v.push_back(std::get<1>(time_ix[ix90]));
+  ret.v.push_back(std::get<1>(time_ix[ix99]));
+  ret.v.push_back(std::get<1>(time_ix[ix999]));
+  ret.v.push_back(std::get<1>(time_ix.back()));
+  return ret;
+}
+
 int main() {
   const int FLUSH_SZ = 1 << 28;
   ll nNums;
   unsigned A;
-  std::vector<ll> a1, a2, search;
+  std::vector<ll> array, search;
   char* flush1 = new char[FLUSH_SZ];
   char* flush2 = new char[FLUSH_SZ];
 
@@ -52,51 +87,52 @@ int main() {
     ll x;
     loaded = 1 == scanf("%llu", &x);
     assert(loaded);
-    a1.push_back(x);
+    array.push_back(x);
     search.push_back(x);
   }
+  std::vector<ll> t_lb(nNums), t_bs(nNums);
 
   std::srand(10);
   std::random_shuffle(search.begin(), search.end());
 
-  printf("lower_bound,binSearch\n");
-
   // search in w.c. n, so search for everything should be better than n^2, so doable for 1e5 elements
   // don't forget to try cycles in cycles
   memcpy(flush1, flush2, FLUSH_SZ);
-  ll st = __rdtsc();
   for (ll i = 0; i < nNums; i++) {
+    ll st = __rdtsc();
     // can I beat STL bin search?
-    std::lower_bound(a1.begin(), a1.end(), search[i]);
-    __rdtscp(&A);
+    std::lower_bound(array.begin(), array.end(), search[i]);
+    t_lb.push_back(__rdtscp(&A) - st);
   }
-  double t1 = (double)(__rdtscp(&A) - st);
-  printf("%e", t1);
 
   memcpy(flush1, flush2, FLUSH_SZ);
-  st = __rdtsc();
   for (ll i = 0; i < nNums; i++) {
-    binSearch(search[i], a1);
-    __rdtscp(&A);
+    ll st = __rdtsc();
+    binSearch(search[i], array);
+    t_bs.push_back(__rdtscp(&A) - st);
   }
-  double t2 = (double)(__rdtscp(&A) - st);
-  printf(",%e", t2);
 
-  memcpy(flush1, flush2, FLUSH_SZ);
-  ll mit = 1000000, mat = 0;
-  // I have the feeling that the serialization is the issue here.
-  st = __rdtsc();
-  for (ll i = 0; i < nNums; i++) {
-    ll st2 = __rdtsc();
-    binSearch(search[i], a1);
-    ll et2 = __rdtscp(&A) - st2;
-    mit = std::min(mit, et2);
-    mat = std::max(mat, et2);
+  std::vector<PerfStats> ps;
+  ps.push_back(perfStats(t_lb, array, search, "lb"));
+  ps.push_back(perfStats(t_bs, array, search, "bs"));
+
+  std::vector<std::string> fields {
+    "name", "avg", "t90", "t99", "t999", "tMax", "v90", "v99", "v999", "vMax" };
+  for (unsigned i = 0; i < fields.size(); i++) {
+    printf("%s%s", i == 0 ? "" : ",", fields[i].c_str());
   }
-  double t3 = (double)(__rdtscp(&A) - st);
-  printf("\nindividual %e %e %e", t3, (double)mit, (double)mat);
-
   printf("\n");
+  for (unsigned i = 0; i < ps.size(); i++) {
+    printf("%s", ps[i].name.c_str());
+    for (double t : ps[i].t) {
+      printf(",%e", t);
+    }
+    for (ll v : ps[i].v) {
+      printf(",%llu", v);
+    }
+    printf("\n");
+  }
+
   delete[] flush1;
   delete[] flush2;
 }

@@ -1,4 +1,4 @@
-GC=g++ -ggdb -Wall
+GC=g++ -ggdb -Wall -std=c++11
 
 profile: search.cc
 	$(GC) -DNDEBUG -Og search.cc -o $@
