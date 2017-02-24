@@ -5,3 +5,6 @@ profile: search.cc
 
 debug: search.cc
 	$(GC) search.cc -o $@
+
+clean:
+	rm -f ./profile ./debug
