@@ -38,44 +38,6 @@ int binSearch(const ll k, const std::vector<ll>& a) {
   return idx;
 }
 
-int binSearchBlk(const ll k, const std::vector<ll>& a) {
-  const int BLK = 8;
-  assert(BLK % 2 == 0);
-
-  unsigned l = 0, r = (BLK - 1 + a.size()) / BLK;
-  int ix = -1;
-
-  while (r - l > 1) {
-    assert(l < r);
-    assert(l+r >= r); // overflow check
-    unsigned mBlk = (l+r) / 2;
-    unsigned m = mBlk * BLK;
-    unsigned m2 = std::min(m + BLK - 1, (unsigned)a.size());
-    if (k < a[m]) {
-      r = mBlk;
-    } else if (k > a[m2]) {
-      l = mBlk+1;
-    } else {
-      l = r = mBlk;
-    }
-  }
-
-  l *= BLK;
-  r = std::min((unsigned)a.size(), l + BLK);
-  while (r - l > 1) {
-    unsigned m = (l + r) / 2;
-    if (k < a[m]) {
-      r = m;
-    } else if (k > a[m]) {
-      l = m+1;
-    } else {
-      ix = m;
-      break;
-    }
-  }
-  return ix;
-}
-
 int intSearch(const ll k, const std::vector<ll>& a) {
   // r is inclusive
   unsigned l = 0, r = a.size() - 1;
@@ -134,13 +96,10 @@ PerfStats perfStats(std::vector<ll>& time, const std::vector<ll>& array, const s
 }
 
 int main() {
-  const int FLUSH_SZ = 1 << 28;
   ll nNums;
   unsigned A;
-  std::vector<ll> array;
+  std::vector<ll> input;
   std::vector<std::tuple<ll, ll> > search;
-  char* flush1 = new char[FLUSH_SZ];
-  char* flush2 = new char[FLUSH_SZ];
 
   bool loaded = 1 == scanf("%llu", &nNums); (void)loaded; // silence not used
   assert(loaded);
@@ -149,53 +108,46 @@ int main() {
     ll x;
     loaded = 1 == scanf("%llu", &x);
     assert(loaded);
-    array.push_back(x);
+    input.push_back(x);
     search.push_back(std::tuple<ll, ll>(x, i));
-    //search.push_back(std::make_tuple(x, i));
   }
   std::vector<ll> t_lb(nNums), t_bs(nNums);
 
   std::srand(10);
   std::random_shuffle(search.begin(), search.end());
 
-  // search in w.c. n, so search for everything should be better than n^2, so doable for 1e5 elements
-  // don't forget to try cycles in cycles
-  memcpy(flush1, flush2, FLUSH_SZ);
-  for (ll i = 0; i < nNums; i++) {
-    ll st = __rdtsc();
-    // can I beat STL bin search?
-    std::lower_bound(array.begin(), array.end(), std::get<0>(search[i]));
-    t_lb.push_back(__rdtscp(&A) - st);
+  {
+    std::vector<ll> array(input);
+    for (ll i = 0; i < nNums; i++) {
+      ll st = __rdtsc();
+      std::lower_bound(array.begin(), array.end(), std::get<0>(search[i]));
+      t_lb.push_back(__rdtscp(&A) - st);
+    }
   }
 
-  memcpy(flush1, flush2, FLUSH_SZ);
-  for (ll i = 0; i < nNums; i++) {
-    ll st = __rdtsc();
-    binSearch(std::get<0>(search[i]), array);
-    t_bs.push_back(__rdtscp(&A) - st);
-  }
-
-  std::vector<ll> t_bk;
-  memcpy(flush1, flush2, FLUSH_SZ);
-  for (ll i = 0; i < nNums; i++) {
-    ll st = __rdtsc();
-    binSearchBlk(std::get<0>(search[i]), array);
-    t_bk.push_back(__rdtscp(&A) - st);
+  {
+    std::vector<ll> array(input);
+    for (ll i = 0; i < nNums; i++) {
+      ll st = __rdtsc();
+      binSearch(std::get<0>(search[i]), array);
+      t_bs.push_back(__rdtscp(&A) - st);
+    }
   }
 
   std::vector<ll> t_it;
-  memcpy(flush1, flush2, FLUSH_SZ);
-  for (ll i = 0; i < nNums; i++) {
-    ll st = __rdtsc();
-    intSearch(std::get<0>(search[i]), array);
-    t_it.push_back(__rdtscp(&A) - st);
+  {
+    std::vector<ll> array(input);
+    for (ll i = 0; i < nNums; i++) {
+      ll st = __rdtsc();
+      intSearch(std::get<0>(search[i]), array);
+      t_it.push_back(__rdtscp(&A) - st);
+    }
   }
 
   std::vector<PerfStats> ps;
-  ps.push_back(perfStats(t_lb, array, search, "lb"));
-  ps.push_back(perfStats(t_bs, array, search, "bs"));
-  ps.push_back(perfStats(t_bk, array, search, "bk"));
-  ps.push_back(perfStats(t_it, array, search, "it"));
+  ps.push_back(perfStats(t_lb, input, search, "lb"));
+  ps.push_back(perfStats(t_bs, input, search, "bs"));
+  ps.push_back(perfStats(t_it, input, search, "it"));
 
   std::vector<std::string> fields {
     "name", "avg", "t90", "t99", "t999", "tMax", "v90", "v99", "v999", "vMax" };
@@ -213,7 +165,4 @@ int main() {
     }
     printf("\n");
   }
-
-  delete[] flush1;
-  delete[] flush2;
 }
