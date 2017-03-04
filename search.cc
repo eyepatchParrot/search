@@ -90,6 +90,7 @@ Search isFp(const ll y, const std::vector<ll>& a, IntStruct& s) {
   return ret;
 }
 
+
 Search isDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
   int l = 0;
@@ -99,6 +100,37 @@ Search isDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
     ll yR = a[r], yL = a[l];
     ll off = (y - yL) / ((yR - yL) / (r-l));
     int m = l + off;
+    assert(m <= r);
+    assert(m >= l);
+    ret.steps++;
+    if (y < a[m]) {
+      // over estimate
+      r = m - 1;
+    } else if (y > a[m]) {
+      // under estimate
+      l = m + 1;
+    } else {
+      ret.ix = m;
+      return ret;
+    }
+  }
+  if (y == a[l]) {
+    ret.ix = l;
+  }
+
+  return ret;
+}
+
+Search isSc(const ll y, const std::vector<ll>& a, IntStruct& s) {
+  Search ret = Search{-1, 0};
+  int l = 0;
+  int r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  while (r - l > 0) {
+    ll yR = a[r], yL = a[l];
+    assert(yR - yL > (1ULL << s.lgScale) && (y == yL || y - yL > (1ULL << s.lgScale)));
+    ll scOff = (r-l) * ((y - yL) >> s.lgScale) / ((yR - yL) >> s.lgScale);
+    int m = l + scOff;
     assert(m <= r);
     assert(m >= l);
     ret.steps++;
@@ -145,7 +177,7 @@ Search intSearch(const ll y, const std::vector<ll>& a, IntStruct& s) {
     // <=> (y - Y_L) / ((Y_R - Y_L) / (R - L))
     // scalar: s = lg(R-L)
     // ((y - yL) >> s) * (r-l) / (yR - yL)
-    assert(y == yL || y - yL > (1ULL << s.lgScale));
+    assert(yR - yL > (1ULL << s.lgScale) && (y == yL || y - yL > (1ULL << s.lgScale)));
     ll scOff = (r-l) * ((y - yL) >> s.lgScale) / ((yR - yL) >> s.lgScale);
     int m = l + scOff;
 #ifndef NDEBUG
@@ -351,6 +383,29 @@ PerfStats perfStats(std::vector<ll>& time, const std::vector<ll>& array, const s
   return ret;
 }
 
+using BenchFn = Search (*)(const ll, const std::vector<ll>&, IntStruct&);
+
+template <BenchFn f, typename StructT>
+void RunBenchmark(std::vector<ll>& input, std::vector<std::tuple<ll, ll> >& order, ll nNums, const char* name) {
+  unsigned A;
+
+  std::vector<ll> array(input);
+  StructT s(array);
+  int maxSteps = -1;
+  ll maxStepV = -1;
+  ll sumSteps = 0;
+  ll st = __rdtsc();
+  for (ll i = 0; i < nNums; i++) {
+    int steps = f(std::get<0>(order[i]), array, s).steps;
+    sumSteps += steps;
+    if (steps > maxSteps) {
+      maxSteps = steps;
+      maxStepV = std::get<0>(order[i]);
+    }
+  }
+  printf("%llu %llu %d %llu %s\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV, name);
+}
+
 int main() {
   // lg only supports [2, 2^32-1]
   assert(lg(2) == 1);
@@ -403,112 +458,9 @@ int main() {
     printf("%llu %llu %d bs\n", __rdtscp(&A) - st, sumSteps, maxSteps);
   }
 
-  {
-    std::vector<ll> array(input);
-    IntStruct s(array);
-    int maxSteps = -1;
-    ll maxStepV = -1;
-    ll sumSteps = 0;
-    ll st = __rdtsc();
-    for (ll i = 0; i < nNums; i++) {
-      int steps = isFp(std::get<0>(search[i]), array, s).steps;
-      sumSteps += steps;
-      if (steps > maxSteps) {
-        maxSteps = steps;
-        maxStepV = std::get<0>(search[i]);
-      }
-    }
-    printf("%llu %llu %d %llu isFp\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV);
-  }
-  {
-    std::vector<ll> array(input);
-    IntStruct s(array);
-    int maxSteps = -1;
-    ll maxStepV = -1;
-    ll sumSteps = 0;
-    ll st = __rdtsc();
-    for (ll i = 0; i < nNums; i++) {
-      int steps = isDiv(std::get<0>(search[i]), array, s).steps;
-      sumSteps += steps;
-      if (steps > maxSteps) {
-        maxSteps = steps;
-        maxStepV = std::get<0>(search[i]);
-      }
-    }
-    printf("%llu %llu %d %llu isDiv\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV);
-  }
-  {
-    std::vector<ll> array(input);
-    IntStruct s(array);
-    int maxSteps = -1;
-    ll maxStepV = -1;
-    ll sumSteps = 0;
-    ll st = __rdtsc();
-    for (ll i = 0; i < nNums; i++) {
-      int steps = intSearch(std::get<0>(search[i]), array, s).steps;
-      sumSteps += steps;
-      if (steps > maxSteps) {
-        maxSteps = steps;
-        maxStepV = std::get<0>(search[i]);
-      }
-    }
-    printf("%llu %llu %d %llu is\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV);
-  }
-  {
-    std::vector<ll> array(input);
-    IntStruct s(array);
-    int maxSteps = -1;
-    ll maxStepV = -1;
-    ll sumSteps = 0;
-    ll st = __rdtsc();
-    for (ll i = 0; i < nNums; i++) {
-      int steps = leapSearch(std::get<0>(search[i]), array, s).steps;
-      sumSteps += steps;
-      if (steps > maxSteps) {
-        maxSteps = steps;
-        maxStepV = std::get<0>(search[i]);
-      }
-//      t_it.push_back();
-    }
-    printf("%llu %llu %d %llu ls\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV);
-  }
-
-//  {
-//    std::vector<ll> array(input);
-//    IntStruct s(array);
-//    int maxSteps = -1;
-//    int maxStepIx = -1;
-//    ll st = __rdtsc();
-//    for (ll i = 0; i < nNums; i++) {
-//      int steps = intSearch(std::get<0>(search[i]), array, s).steps;
-//      if (steps > maxSteps) {
-//        maxSteps = steps;
-//        maxStepIx = std::get<1>(search[i]);
-//      }
-////      t_it.push_back();
-//    }
-//    printf("%llu %d %d is\n", __rdtscp(&A) - st, maxSteps, maxStepIx);
-//  }
-
-//  std::vector<PerfStats> ps;
-//  ps.push_back(perfStats(t_lb, input, search, "lb"));
-//  ps.push_back(perfStats(t_bs, input, search, "bs"));
-//  ps.push_back(perfStats(t_it, input, search, "it"));
-//
-//  std::vector<std::string> fields {
-//    "name", "avg", "t90", "t99", "t999", "tMax", "v90", "v99", "v999", "vMax" };
-//  for (unsigned i = 0; i < fields.size(); i++) {
-//    printf("%s%s", i == 0 ? "" : ",", fields[i].c_str());
-//  }
-//  printf("\n");
-//  for (unsigned i = 0; i < ps.size(); i++) {
-//    printf("%s", ps[i].name.c_str());
-//    for (double t : ps[i].t) {
-//      printf(",%e", t);
-//    }
-//    for (ll v : ps[i].v) {
-//      printf(",%llu", v);
-//    }
-//    printf("\n");
-//  }
+  RunBenchmark<isFp, IntStruct>(input, search, nNums, "isFp");
+  RunBenchmark<isDiv, IntStruct>(input, search, nNums, "isDiv");
+  RunBenchmark<isSc, IntStruct>(input, search, nNums, "isSc");
+  RunBenchmark<intSearch, IntStruct>(input, search, nNums, "is");
+  RunBenchmark<leapSearch, IntStruct>(input, search, nNums, "ls");
 }
