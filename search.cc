@@ -21,6 +21,11 @@ struct Search {
   int ix, steps;
 };
 
+unsigned lg(unsigned x) {
+  assert(x >= 2); // subtracting and clz < 1 is undefined.
+  return 32 - __builtin_clz(x-1);
+}
+
 Search binSearch(const ll k, const std::vector<ll>& a) {
   unsigned l = 0;
   unsigned r = a.size();
@@ -45,19 +50,76 @@ Search binSearch(const ll k, const std::vector<ll>& a) {
 }
 
 struct IntStruct {
-  unsigned l, r;
-  double vL, vR, slope;
+  unsigned lgScale;
 
   IntStruct(const std::vector<ll>& a) {
-    l = 0;
-    r = a.size() - 1;
-    vL = a[l];
-    vR = a[r];
-    slope = 1.0 / (vR - vL);
+    lgScale = lg(a.size() - 1);
   }
 };
 
-Search intSearch(const ll k, const std::vector<ll>& a, IntStruct& s) {
+Search isFp(const ll y, const std::vector<ll>& a, IntStruct& s) {
+  Search ret = Search{-1, 0};
+  int l = 0;
+  int r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  double yR = a[r], yL = a[l], yY = y;
+  
+  while (r - l > 0) {
+    double p = 1.0 / (yR - yL) * (yY - yL);
+    int m = l + (int)(p * (r-l));
+    assert(m <= r);
+    assert(m >= l);
+    ret.steps++;
+    if (y < a[m]) {
+      // over estimate
+      r = m - 1;
+      yR = a[r];
+    } else if (y > a[m]) {
+      // under estimate
+      l = m + 1;
+      yL = a[l];
+    } else {
+      ret.ix = m;
+      return ret;
+    }
+  }
+  if (y == a[l]) {
+    ret.ix = l;
+  }
+
+  return ret;
+}
+
+Search isDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
+  Search ret = Search{-1, 0};
+  int l = 0;
+  int r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  while (r - l > 0) {
+    ll yR = a[r], yL = a[l];
+    ll off = (y - yL) / ((yR - yL) / (r-l));
+    int m = l + off;
+    assert(m <= r);
+    assert(m >= l);
+    ret.steps++;
+    if (y < a[m]) {
+      // over estimate
+      r = m - 1;
+    } else if (y > a[m]) {
+      // under estimate
+      l = m + 1;
+    } else {
+      ret.ix = m;
+      return ret;
+    }
+  }
+  if (y == a[l]) {
+    ret.ix = l;
+  }
+
+  return ret;
+}
+Search intSearch(const ll y, const std::vector<ll>& a, IntStruct& s) {
   // can we change this to fix pt arithm?
   // first priority is reducing number of lookups
   // two ideas about systematically underestimating and overestimating
@@ -65,29 +127,51 @@ Search intSearch(const ll k, const std::vector<ll>& a, IntStruct& s) {
   //    if you go on the other end, then reset and repeat.
   // 2. Take the error by which you were off, and multiply your next estimate by that.
   // 3. Look at euclid's alg and stuff like for for using error info to guide search
-  int l = s.l, r = s.r;
-  double vL = s.vL, vR = s.vR, vK = k;
   Search ret = Search{-1, 0};
+  int l = 0;
+  int r = a.size() - 1;
+  //double yL = a[l], yR = a[r], yY = y;
   assert(r - l >= 0); // assume non-empty vector
+#ifndef NDEBUG
+  int bad = 0;
+#endif
   
   while (r - l > 0) {
-    double p = 1.0 / (vR - vL) * (vK - vL);
-    int m = l + (int)(p * (r-l));
+    ll yR = a[r], yL = a[l];
+    // (R-L)(y - Y_L) > (Y_R - Y_L)
+    // y - Y_L < Y_R - Y_L
+    // R - L < Y_R - Y_L
+    //     (R-L)(y-Y_L) / (Y_R - Y_L)
+    // <=> (y - Y_L) / ((Y_R - Y_L) / (R - L))
+    // scalar: s = lg(R-L)
+    // ((y - yL) >> s) * (r-l) / (yR - yL)
+    assert(y == yL || y - yL > (1ULL << s.lgScale));
+    ll scOff = (r-l) * ((y - yL) >> s.lgScale) / ((yR - yL) >> s.lgScale);
+    int m = l + scOff;
+#ifndef NDEBUG
+    ll off = (y - yL) / ((yR - yL) / (r-l));
+    int m2 = l + off;
+    if ((m - m2) * (m-m2) > 1) {
+      printf("[scOff off] --> [%llu %llu]\n", scOff, off);
+      printf("[l m r] --> [%d %d %d]\n", l, m-m2, r);
+      assert(++bad < 100);
+    }
+#endif
+    assert(m <= r);
+    assert(m >= l);
     ret.steps++;
-    if (k < a[m]) {
+    if (y < a[m]) {
       // over estimate
       r = m - 1;
-      vR = a[r];
-    } else if (k > a[m]) {
+    } else if (y > a[m]) {
       // under estimate
       l = m + 1;
-      vL = a[l];
     } else {
       ret.ix = m;
       return ret;
     }
   }
-  if (k == a[l]) {
+  if (y == a[l]) {
     ret.ix = l;
   }
 
@@ -230,51 +314,6 @@ Search leapSearch(const ll k, const std::vector<ll>& a, IntStruct& s) {
   if (k == a[l]) {
     ret.ix = l;
   }
-
-//      int leap = std::min((r-l)/2, std::max(MIN_SZ, (int)((1.0 - (1.0 / (a[r] - a[l]) * (k - a[l]))) * 2 * (r-l))));
-//      m = r - leap;
-//      ret.steps++;
-//      if (k == 8496300069059941) printf("%d < %d < %d | %d l1 \n", l, m, r, r-l);
-//      int newR = r;
-//      // exponential search only works to halfway. We'd have to have been very
-//      // inaccurate to get there.
-//      while (leap < (r-l)/2 && k < a[m]) {
-//        newR = m;
-//        leap = std::min(leap * 2, (r-l)/2);
-//        m = r - leap;
-//        // 8496300069059941
-//        if (k == 8496300069059941) printf("%d < %d < %d | %d li \n", l, m, newR, newR-l);
-//        ret.steps++;
-//      }
-//      r = newR;
-//      if (k >= a[m] && m > l) {
-//        l = m;
-//      }
-//      assert(k <= a[r] && k >= a[l]);
-//    } else if (k > a[m]) {
-//      // under estimate
-//      l = m + 1;
-//
-//      int leap = std::min((r-l)/2, std::max(MIN_SZ, (int)(1.0 / (a[r] - a[l]) * (k - a[l]) * 2 *(r-l))));
-//      m = l + leap;
-//      ret.steps++;
-//      if (k == 8496300069059941) printf("%d < %d < %d | %d r1 \n", l, m, r, r-l);
-//
-//      int newL = l;
-//      // see earlier note about exp search
-//      while (leap < (r-l)/2 && k > a[m]) {
-//        newL = l;
-//        leap = std::min(leap * 2, (r-l)/2);
-//        m = l + leap;
-//        ret.steps++;
-//      }
-//      l = newL;
-//    
-//      // TODO record steps?
-//      if (k <= a[m] && m < r) {
-//        r = m;
-//      }
-//      assert(k <= a[r] && k >= a[l]);
   return ret;
 }
 
@@ -313,6 +352,14 @@ PerfStats perfStats(std::vector<ll>& time, const std::vector<ll>& array, const s
 }
 
 int main() {
+  // lg only supports [2, 2^32-1]
+  assert(lg(2) == 1);
+  assert(lg(3) == 2);
+  assert(lg(4) == 2);
+  assert(lg(17) == 5);
+  assert(lg(31) == 5);
+  assert(lg(32) == 5);
+  assert(0 < printf("log tests pass\n"));
   ll nNums;
   unsigned A;
   std::vector<ll> input;
@@ -345,44 +392,85 @@ int main() {
 //
   {
     std::vector<ll> array(input);
-    int steps = -1;
+    ll sumSteps = 0;
+    int maxSteps = 1e9;
     ll st = __rdtsc();
     for (ll i = 0; i < nNums; i++) {
-      steps = std::max(steps, binSearch(std::get<0>(search[i]), array).steps);
+      int steps = binSearch(std::get<0>(search[i]), array).steps;
+      maxSteps = std::max(maxSteps, steps);
+      sumSteps += steps;
     }
-    printf("%llu %d bs\n", __rdtscp(&A) - st, steps);
+    printf("%llu %llu %d bs\n", __rdtscp(&A) - st, sumSteps, maxSteps);
   }
 
-  //{
-  //  std::vector<ll> array(input);
-  //  IntStruct s(array);
-  //  int maxSteps = -1;
-  //  ll maxStepV = -1;
-  //  ll st = __rdtsc();
-  //  for (ll i = 0; i < nNums; i++) {
-  //    int steps = intSearch(std::get<0>(search[i]), array, s).steps;
-  //    if (steps > maxSteps) {
-  //      maxSteps = steps;
-  //      maxStepV = std::get<0>(search[i]);
-  //    }
-  //  }
-  //  printf("%llu %d %llu is\n", __rdtscp(&A) - st, maxSteps, maxStepV);
-  //}
   {
     std::vector<ll> array(input);
     IntStruct s(array);
     int maxSteps = -1;
     ll maxStepV = -1;
+    ll sumSteps = 0;
+    ll st = __rdtsc();
+    for (ll i = 0; i < nNums; i++) {
+      int steps = isFp(std::get<0>(search[i]), array, s).steps;
+      sumSteps += steps;
+      if (steps > maxSteps) {
+        maxSteps = steps;
+        maxStepV = std::get<0>(search[i]);
+      }
+    }
+    printf("%llu %llu %d %llu isFp\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV);
+  }
+  {
+    std::vector<ll> array(input);
+    IntStruct s(array);
+    int maxSteps = -1;
+    ll maxStepV = -1;
+    ll sumSteps = 0;
+    ll st = __rdtsc();
+    for (ll i = 0; i < nNums; i++) {
+      int steps = isDiv(std::get<0>(search[i]), array, s).steps;
+      sumSteps += steps;
+      if (steps > maxSteps) {
+        maxSteps = steps;
+        maxStepV = std::get<0>(search[i]);
+      }
+    }
+    printf("%llu %llu %d %llu isDiv\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV);
+  }
+  {
+    std::vector<ll> array(input);
+    IntStruct s(array);
+    int maxSteps = -1;
+    ll maxStepV = -1;
+    ll sumSteps = 0;
+    ll st = __rdtsc();
+    for (ll i = 0; i < nNums; i++) {
+      int steps = intSearch(std::get<0>(search[i]), array, s).steps;
+      sumSteps += steps;
+      if (steps > maxSteps) {
+        maxSteps = steps;
+        maxStepV = std::get<0>(search[i]);
+      }
+    }
+    printf("%llu %llu %d %llu is\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV);
+  }
+  {
+    std::vector<ll> array(input);
+    IntStruct s(array);
+    int maxSteps = -1;
+    ll maxStepV = -1;
+    ll sumSteps = 0;
     ll st = __rdtsc();
     for (ll i = 0; i < nNums; i++) {
       int steps = leapSearch(std::get<0>(search[i]), array, s).steps;
+      sumSteps += steps;
       if (steps > maxSteps) {
         maxSteps = steps;
         maxStepV = std::get<0>(search[i]);
       }
 //      t_it.push_back();
     }
-    printf("%llu %d %llu ls\n", __rdtscp(&A) - st, maxSteps, maxStepV);
+    printf("%llu %llu %d %llu ls\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV);
   }
 
 //  {
