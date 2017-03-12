@@ -22,12 +22,12 @@ unsigned lg(unsigned x) {
   return 32 - __builtin_clz(x-1);
 }
 
-unsigned lgl(ll x) {
+inline unsigned lgl(ll x) {
   assert(x >= 2); // subtracting and clz < 1 undefined
   return 64 - __builtin_clzll(x-1);
 }
 
-unsigned lgl_flr(ll x) {
+inline unsigned lgl_flr(ll x) {
   assert(x >= 1); // clz < 1 undefined
   return 64 - __builtin_clzll(x);
 }
@@ -60,10 +60,11 @@ struct DivLut {
       lg_rDT[r] = lz + LG_W-1;
       rNT[r] = rN >> (63 - lg_rDT[r]);
       assert(rNT[r] < W);
-      printf("1/%llu ~= %llu / 2^%llu\n", r, rNT[r], lg_rDT[r]);
+#ifndef NDEBUG
       ll rQ = (0xFFFFFFFF * rNT[r]) >> lg_rDT[r];
       ll q = 0xFFFFFFFF / r;
       assert(rQ <= q);
+#endif
     }
   }
   ll rNT[L];
@@ -77,33 +78,56 @@ struct DivLut {
   // if n < W, an overflow isn't possible, 
   // only need to ensure lg(n) - k <= 64 - LG_W ==> k >= 64 - LG_W - lg(n)
   // minimize k
-  ll div(ll n, const ll d) const {
-    // first get the index
-    const ll LG_D = lgl(d);
-    const ll k = sub_sat_u64(LG_D, LG_L);
-    //const ll k = d >= L ? lgl(d) - LG_L : 0;
-    const ll r = 1 + ((d-1) >> k);
+  ll div(const ll n, const ll d) const {
+    if (n < d) return 0; // can't handle shifts > 63
+    // approximate divisor
+    ll rN, totalShift;
+    if (d >= L) {
+      const ll LG_D = lgl_flr(d);
+      const ll k = LG_D - LG_L;
+      const ll r = 1 + ((d-1) >> k);
 #ifndef NDEBUG
-    printf("d %llu k %llu r %llu \n", d, k, r);
+      if (r >= L) {
+        printf("d %llu k %llu r %llu \n", d, k, r);
+        assert(r < L);
+      }
 #endif
-    assert(r < L);
-    const ll rN = rNT[r];
-    const ll lg_rD = lg_rDT[r];
-    // if LG_D > 64-8, shift right by LG_D - (64 - 8)
-    const ll totalShift = k + lg_rD;
+      rN = rNT[r];
+      const ll lg_rD = lg_rDT[r];
+      totalShift = k + lg_rD;
+    } else {
+      const ll r = d;
+      rN = rNT[r];
+      totalShift = lg_rDT[r];
+    }
+
+    // calculate quotient
+    ll q = quot(n, rN, totalShift);
 #ifndef NDEBUG
-    printf("%llu / %llu ~= %llu * %llu / 2^%llu\n", n, d, n, rN, totalShift);
-#endif
-    ll q = n;
-    const ll overflowShift = (q > OVERFLOW_CHK) ? LG_W : 0;
-    q >>= overflowShift;
-    assert(q * rN >= q);
-    q *= rN;
-    q >>= (totalShift - overflowShift);
-#ifndef NDEBUG
-    printf("%llu = %llu - %llu r %llu \n", (n/d)-q, n/d, q, r);
+    ll diff = (n/d) - q;
+    if (diff > 3) {
+      printf("%llu / %llu ~= %llu * %llu / 2^%llu\n", n, d, n, rN, totalShift);
+      printf("%llu = %llu - %llu \n", diff, n/d, q);
+      assert(q * rN >= q);
+      assert(diff < 20);
+    }
 #endif
     return q;
+  }
+
+  static inline ll quot(const ll n, const ll rN, const ll lg_d) {
+    if (n <= OVERFLOW_CHK) {
+      ll q = n;
+      q *= rN;
+      q >>= lg_d;
+      return q;
+    } else {
+      ll q = n;
+      q >>= LG_W;
+      q *= rN;
+      q >>= (lg_d - LG_W);
+      return q;
+    }
   }
 };
 
@@ -114,7 +138,7 @@ struct Search {
 };
 
 struct BinStruct {
-  BinStruct(const std::vector<ll>& a) { }
+  BinStruct(const std::vector<ll>& a) { (void)a; }
 };
 
 struct IntStruct {
@@ -126,6 +150,7 @@ struct IntStruct {
 };
 
 Search binSearch(const ll k, const std::vector<ll>& a, BinStruct& s) {
+  (void)s;
   unsigned l = 0;
   unsigned r = a.size();
   Search ret = Search{-1, 0};
@@ -148,6 +173,7 @@ Search binSearch(const ll k, const std::vector<ll>& a, BinStruct& s) {
   return ret;
 }
 Search bs2(const ll y, const std::vector<ll>& a, BinStruct& s) {
+  (void)s;
   // can we generate a branchless binary search?
   // maybe use an integer to represent branching state. 
   // could even put speculation in if there's enough depth
@@ -179,8 +205,11 @@ Search bs3(const ll y, const std::vector<ll>& a, BinStruct& s) {
     i[0] = i[0+x];
     i[2] = i[1+x];
   }
-  assert(a[i[0]] == y);
-  return Search{(int)i[0], steps};
+  if (a[i[0]] == y) {
+    return Search{(int)i[0], steps};
+  } else {
+    return Search{-1, steps};
+  }
 }
 
 Search bs4(const ll y, const std::vector<ll>& a, BinStruct& s) {
@@ -402,7 +431,7 @@ Search isDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
 }
 
 // L + (R - L)(y - yL) / (yR - yL)
-Search isSc1(const ll y, const std::vector<ll>& a, IntStruct& s) {
+Search isIntDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
@@ -449,7 +478,7 @@ Search isSc1(const ll y, const std::vector<ll>& a, IntStruct& s) {
 }
 
 // L + (R - L)(y - yL) / (yR - yL)
-Search isSc2(const ll y, const std::vector<ll>& a, IntStruct& s) {
+Search isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
@@ -658,7 +687,7 @@ void RunBenchmark(std::vector<ll>& input, std::vector<std::tuple<ll, ll> >& orde
       maxStepV = std::get<0>(order[i]);
     }
   }
-  printf("%llu %llu %d %llu %s\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV, name);
+  printf("%llu,%llu,%d,%llu,%s\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV, name);
 }
 
 int main() {
@@ -677,24 +706,66 @@ int main() {
     assert(dL.div(0xFFFULL, 2) == 0x7FFULL);
   }
 
-  ll nNums;
+  int nNums;
   std::vector<ll> input;
   std::vector<std::tuple<ll, ll> > search;
 
-  bool loaded = 1 == scanf("%llu", &nNums); (void)loaded; // silence not used
+  bool loaded = 1 == scanf("%d", &nNums); (void)loaded; // silence not used
   assert(loaded);
   assert(nNums > 0);
-  for (ll i = 0; i < nNums; i++) {
+  for (int i = 0; i < nNums; i++) {
     ll x;
     loaded = 1 == scanf("%llu", &x);
     assert(loaded);
-    input.push_back(x);
+    input.push_back(x == 0 ? 1 : x); // temporary measure to keep from div by 0
     search.push_back(std::tuple<ll, ll>(x, i));
   }
   std::vector<ll> t_lb(nNums), t_bs(nNums);
 
   std::srand(10);
   std::random_shuffle(search.begin(), search.end());
+
+  ll const * const inPtr = input.data();
+
+  unsigned A;
+  ll sum = 0;
+  printf("name,cycles\n");
+  ll st;
+  for (int i = 0; i < 10; i++) {
+//    ll st = __rdtsc();
+//    for (ll i = 0; i < nNums; i++) {
+//      for (ll j = 0; j < nNums; j++) {
+//        sum += input[i] / input[j];
+//      }
+//    }
+//    ll it = __rdtscp(&A) - st;
+//    printf("int div,%llu\n", it);
+    st = __rdtsc();
+    for (int i = 0; i < nNums; i++) {
+      for (int j = 0; j < nNums; j++) {
+        sum += dL.div(inPtr[i], inPtr[j]);
+      }
+    }
+    ll lt = __rdtscp(&A);
+    printf("LUT div,%llu\n", lt-st);
+    st = __rdtsc();
+    for (int i = 0; i < nNums; i++) {
+      for (int j = 0; j < nNums; j++) {
+        sum += dL.div(inPtr[i], inPtr[j]);
+      }
+    }
+    ll lt2 = __rdtscp(&A);
+    printf("LUT div2,%llu\n", lt2-st);
+    st = __rdtsc();
+    for (int i = 0; i < nNums; i++) {
+      for (int j = 0; j < nNums; j++) {
+        sum += dL.div(inPtr[i], inPtr[j]);
+      }
+    }
+    ll lt3 = __rdtscp(&A);
+    printf("LUT div3,%llu\n", lt3-st);
+  }
+  printf("sum,%llu\n", sum);
 
   /*
 //  {
@@ -706,17 +777,20 @@ int main() {
 //    printf("%llu\n", __rdtscp(&A) - st);
 //  }
   */
-  //RunBenchmark<BinStruct>(input, search, nNums, "bs", binSearch);
-  RunBenchmark<BinStruct>(input, search, nNums, "bs2", bs2);
-  //RunBenchmark<BinStruct>(input, search, nNums, "bs4", bs4);
-  //RunBenchmark<BinStruct>(input, search, nNums, "bs3", bs3);
-  //RunBenchmark<IntStruct>(input, search, nNums, "isFp", isFp);
-  //RunBenchmark<IntStruct>(input, search, nNums, "isDiv", isDiv);
-  //RunBenchmark<IntStruct>(input, search, nNums, "isDiv2", isDiv2);
-  RunBenchmark<IntStruct>(input, search, nNums, "isSc1", isSc1);
-  RunBenchmark<IntStruct>(input, search, nNums, "isSc2", isSc2);
-  //RunBenchmark<IntStruct>(input, search, nNums, "isScLn", isScLn);
-  //RunBenchmark<IntStruct>(input, search, nNums, "isExc", isExc);
-  //RunBenchmark<IntStruct>(input, search, nNums, "is", intSearch);
-  //RunBenchmark<IntStruct>(input, search, nNums, "ls", leapSearch);
+//  printf("cycles,steps,maxSteps,worstVal,name\n");
+//  for (int i = 0; i < 1000; i++) {
+//    //RunBenchmark<BinStruct>(input, search, nNums, "bs", binSearch);
+//    RunBenchmark<BinStruct>(input, search, nNums, "bs2", bs2);
+//    //RunBenchmark<BinStruct>(input, search, nNums, "bs4", bs4);
+//    //RunBenchmark<BinStruct>(input, search, nNums, "bs3", bs3);
+//    //RunBenchmark<IntStruct>(input, search, nNums, "isFp", isFp);
+//    //RunBenchmark<IntStruct>(input, search, nNums, "isDiv", isDiv);
+//    //RunBenchmark<IntStruct>(input, search, nNums, "isDiv2", isDiv2);
+//    RunBenchmark<IntStruct>(input, search, nNums, "isIntDiv", isIntDiv);
+//    RunBenchmark<IntStruct>(input, search, nNums, "isLUTDiv", isLUTDiv);
+//    //RunBenchmark<IntStruct>(input, search, nNums, "isScLn", isScLn);
+//    //RunBenchmark<IntStruct>(input, search, nNums, "isExc", isExc);
+//    //RunBenchmark<IntStruct>(input, search, nNums, "is", intSearch);
+//    //RunBenchmark<IntStruct>(input, search, nNums, "ls", leapSearch);
+//  }
 }
