@@ -27,6 +27,88 @@ unsigned lgl(ll x) {
   return 64 - __builtin_clzll(x-1);
 }
 
+unsigned lgl_flr(ll x) {
+  assert(x >= 1); // clz < 1 undefined
+  return 64 - __builtin_clzll(x);
+}
+
+// https://locklessinc.com/articles/sat_arithmetic/
+inline ll sub_sat_u64(ll x, ll y) {
+  ll res = x-y;
+  res &= -(res <= x);
+  return res;
+}
+
+// http://stackoverflow.com/questions/19016099/lookup-table-with-constexpr
+struct DivLut {
+  const static ll LG_W = 8;
+  const static ll W = 1ULL << LG_W;
+  const static ll LG_L = 8;
+  const static ll L = 1 + (1ULL << LG_L);
+  const static ll OVERFLOW_CHK = 1ULL << (64 - LG_W);
+
+  DivLut() : rNT(), lg_rDT() {
+    /*
+     * 1/d ~= 1 / r / 2^k ~= rN / rD / 2^k
+     */
+    // skip zero since divide by zero makes no sense
+    for (ll r = 1; r < L; r++) {
+      ll rN = (1ULL << 63) / r; // 1/r ~= rN / 2^63
+      assert(rN > 0); // multiply by zero doesn't make sense.
+
+      int lz = __builtin_clzll(rN);
+      lg_rDT[r] = lz + LG_W-1;
+      rNT[r] = rN >> (63 - lg_rDT[r]);
+      assert(rNT[r] < W);
+      printf("1/%llu ~= %llu / 2^%llu\n", r, rNT[r], lg_rDT[r]);
+      ll rQ = (0xFFFFFFFF * rNT[r]) >> lg_rDT[r];
+      ll q = 0xFFFFFFFF / r;
+      assert(rQ <= q);
+    }
+  }
+  ll rNT[L];
+  ll lg_rDT[L]; // 2^8 * lg(rD)
+
+  // ensure that n * a < 2^64
+  // if n + W >= 2^64, overflow. This means that LG_W can be at most 32
+  // elements, because otehrwise we would have to scale down n by so much
+  // that we would lose, not gain precision. Since W <= 2^32, n + W > 2^64
+  // ==> n > W
+  // if n < W, an overflow isn't possible, 
+  // only need to ensure lg(n) - k <= 64 - LG_W ==> k >= 64 - LG_W - lg(n)
+  // minimize k
+  ll div(ll n, const ll d) const {
+    // first get the index
+    const ll LG_D = lgl(d);
+    const ll k = sub_sat_u64(LG_D, LG_L);
+    //const ll k = d >= L ? lgl(d) - LG_L : 0;
+    const ll r = 1 + ((d-1) >> k);
+#ifndef NDEBUG
+    printf("d %llu k %llu r %llu \n", d, k, r);
+#endif
+    assert(r < L);
+    const ll rN = rNT[r];
+    const ll lg_rD = lg_rDT[r];
+    // if LG_D > 64-8, shift right by LG_D - (64 - 8)
+    const ll totalShift = k + lg_rD;
+#ifndef NDEBUG
+    printf("%llu / %llu ~= %llu * %llu / 2^%llu\n", n, d, n, rN, totalShift);
+#endif
+    ll q = n;
+    const ll overflowShift = (q > OVERFLOW_CHK) ? LG_W : 0;
+    q >>= overflowShift;
+    assert(q * rN >= q);
+    q *= rN;
+    q >>= (totalShift - overflowShift);
+#ifndef NDEBUG
+    printf("%llu = %llu - %llu r %llu \n", (n/d)-q, n/d, q, r);
+#endif
+    return q;
+  }
+};
+
+DivLut dL;
+
 struct Search {
   int ix, steps;
 };
@@ -65,6 +147,57 @@ Search binSearch(const ll k, const std::vector<ll>& a, BinStruct& s) {
 
   return ret;
 }
+Search bs2(const ll y, const std::vector<ll>& a, BinStruct& s) {
+  // can we generate a branchless binary search?
+  // maybe use an integer to represent branching state. 
+  // could even put speculation in if there's enough depth
+  int l = 0;
+  int w = a.size();
+  int steps = 0;
+  while (w > 0) {
+    w >>= 1;
+    steps++;
+    if (a[l+w] < y) {
+      l += w;
+    } else if (a[l+w] == y) {
+      w = 0;
+    }
+  }
+  return Search{l, steps};
+}
+
+Search bs3(const ll y, const std::vector<ll>& a, BinStruct& s) {
+  // can we generate a branchless binary search?
+  // maybe use an integer to represent branching state. 
+  // could even put speculation in if there's enough depth
+  int steps = 0;
+  ll i[] = { 0, 0, a.size()};
+  while (i[2]-i[0] > 0) {
+    i[1] = (i[0] + i[2]) / 2;
+    ll x = a[i[1]] > i[1];
+    assert(x == 0 || x == 1);
+    i[0] = i[0+x];
+    i[2] = i[1+x];
+  }
+  assert(a[i[0]] == y);
+  return Search{(int)i[0], steps};
+}
+
+Search bs4(const ll y, const std::vector<ll>& a, BinStruct& s) {
+  // can we generate a branchless binary search?
+  // maybe use an integer to represent branching state. 
+  // could even put speculation in if there's enough depth
+  int l = 0;
+  int w = a.size();
+  int steps = 0;
+  while (w > 0) {
+    w >>= 1;
+    steps++;
+    l += w * (a[l+w] < y);
+  }
+  return Search{l, steps};
+}
+
 
 Search leapSearch(const ll k, const std::vector<ll>& a, IntStruct& s) {
   // 1. Interpolate
@@ -205,7 +338,6 @@ Search leapSearch(const ll k, const std::vector<ll>& a, IntStruct& s) {
   return ret;
 }
 
-
 Search isFp(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
   int l = 0;
@@ -238,7 +370,6 @@ Search isFp(const ll y, const std::vector<ll>& a, IntStruct& s) {
 
   return ret;
 }
-
 
 Search isDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
@@ -273,14 +404,14 @@ Search isDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
 // L + (R - L)(y - yL) / (yR - yL)
 Search isSc1(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
-  int l = 0, r = a.size() - 1;
+  ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
   ll yR = a[r], yL = a[l];
   while (r - l > 0) {
     assert(yR - yL > (1ULL << s.lgScale) && (y == yL || y - yL > (1ULL << s.lgScale)));
     ll d = ((yR - yL) >> s.lgScale);
     ll scOff = (r-l) * ((y - yL) >> s.lgScale) / d;
-    int m = l + scOff;
+    ll m = l + scOff;
     assert(m <= r);
     assert(m >= l);
 //#ifndef NDEBUG
@@ -317,16 +448,19 @@ Search isSc1(const ll y, const std::vector<ll>& a, IntStruct& s) {
   return ret;
 }
 
+// L + (R - L)(y - yL) / (yR - yL)
 Search isSc2(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
-  int l = 0, r = a.size() - 1;
+  ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
   ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
   while (r - l > 0) {
-    assert(yR - yL > (1ULL << s.lgScale) && (y == yL || y - yL > (1ULL << s.lgScale)));
-    ll d = ((yR - yL) >> s.lgScale);
-    ll scOff = (r-l) * ((y - yL) >> s.lgScale) / d;
-    int m = l + scOff;
+    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
+    ll n = (r-l)*((y-yL) >> lgScale);
+    ll d = ((yR - yL) >> lgScale);
+    ll scOff = dL.div(n,d);
+    ll m = l + scOff;
     assert(m <= r);
     assert(m >= l);
     ret.steps++;
@@ -350,6 +484,7 @@ Search isSc2(const ll y, const std::vector<ll>& a, IntStruct& s) {
   return ret;
 }
 
+// base case linear search
 // L + (R - L)(y - yL) / (yR - yL)
 Search isScLn(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
@@ -390,21 +525,14 @@ Search isScLn(const ll y, const std::vector<ll>& a, IntStruct& s) {
 
 // C = (R - L - 2)(y - yL)/(yR - yL)
 Search isExc(const ll y, const std::vector<ll>& a, IntStruct& s) {
-  // TODO try using r, l, m as long longs
-  int l = 0, r = a.size() - 1;
+  ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
   ll yL = a[l], yR = a[r];
-  if (yL == y) {
-    return Search{l, 2};
-  } else if (yR == y) {
-    return Search{r, 2};
-  }
-  // TODO try removing ret
   Search ret = Search{-1, 2};
   while (r - l > 2) {
     assert(yR - yL > (1ULL << s.lgScale) && (y == yL || y - yL > (1ULL << s.lgScale)));
     ll n = ((y - yL) >> s.lgScale), d = ((yR - yL) >> s.lgScale), w = (r-l-2);
-    int m = l + 1 + w * n / d;
+    ll m = l + 1 + w * n / d;
     assert(m < r);
     assert(m > l);
     ret.steps++;
@@ -421,8 +549,16 @@ Search isExc(const ll y, const std::vector<ll>& a, IntStruct& s) {
       return ret;
     }
   }
+  if (a[l+1] == y) {
+    ret.ix = l + 1;
+  } else if (a[0] == y) {
+    ret.ix = 0;
+  } else if (a.back() == y) {
+    ret.ix = r;
+  }
   return ret;
 }
+
 Search intSearch(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
   int l = 0;
@@ -534,6 +670,13 @@ int main() {
   assert(lg(31) == 5);
   assert(lg(32) == 5);
   assert(0 < printf("log tests pass\n"));
+
+  // TESTS Div
+  if (dL.div(0xFFFULL, 2) != 0x7FFULL) {
+    printf("0xFFF / 2 != %llx\n", dL.div(0xFFFULL, 2));
+    assert(dL.div(0xFFFULL, 2) == 0x7FFULL);
+  }
+
   ll nNums;
   std::vector<ll> input;
   std::vector<std::tuple<ll, ll> > search;
@@ -563,14 +706,17 @@ int main() {
 //    printf("%llu\n", __rdtscp(&A) - st);
 //  }
   */
-  RunBenchmark<BinStruct>(input, search, nNums, "bs", binSearch);
-  RunBenchmark<IntStruct>(input, search, nNums, "isFp", isFp);
-  RunBenchmark<IntStruct>(input, search, nNums, "isDiv", isDiv);
+  //RunBenchmark<BinStruct>(input, search, nNums, "bs", binSearch);
+  RunBenchmark<BinStruct>(input, search, nNums, "bs2", bs2);
+  //RunBenchmark<BinStruct>(input, search, nNums, "bs4", bs4);
+  //RunBenchmark<BinStruct>(input, search, nNums, "bs3", bs3);
+  //RunBenchmark<IntStruct>(input, search, nNums, "isFp", isFp);
+  //RunBenchmark<IntStruct>(input, search, nNums, "isDiv", isDiv);
   //RunBenchmark<IntStruct>(input, search, nNums, "isDiv2", isDiv2);
   RunBenchmark<IntStruct>(input, search, nNums, "isSc1", isSc1);
   RunBenchmark<IntStruct>(input, search, nNums, "isSc2", isSc2);
-  RunBenchmark<IntStruct>(input, search, nNums, "isScLn", isScLn);
-  RunBenchmark<IntStruct>(input, search, nNums, "isExc", isExc);
+  //RunBenchmark<IntStruct>(input, search, nNums, "isScLn", isScLn);
+  //RunBenchmark<IntStruct>(input, search, nNums, "isExc", isExc);
   //RunBenchmark<IntStruct>(input, search, nNums, "is", intSearch);
   //RunBenchmark<IntStruct>(input, search, nNums, "ls", leapSearch);
 }
