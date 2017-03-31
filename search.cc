@@ -143,7 +143,7 @@ struct IntStruct {
   }
 };
 
-Search bs(const ll k, const std::vector<ll>& a, BinStruct& s) {
+Search __attribute__ ((noinline)) bs(const ll k, const std::vector<ll>& a, BinStruct& s) {
   (void)s;
   unsigned l = 0;
   unsigned r = a.size();
@@ -168,7 +168,7 @@ Search bs(const ll k, const std::vector<ll>& a, BinStruct& s) {
   return Search{(int)l, steps};
 }
 
-Search bsNoEq(const ll k, const std::vector<ll>& a, BinStruct& s) {
+Search __attribute__ ((noinline)) bsNoEq(const ll k, const std::vector<ll>& a, BinStruct& s) {
   (void)s;
   unsigned l = 0;
   unsigned r = a.size();
@@ -190,7 +190,7 @@ Search bsNoEq(const ll k, const std::vector<ll>& a, BinStruct& s) {
 }
 
 // PVK : https://pvk.ca/Blog/2015/11/29/retrospective-on-binary-search-and-on-compression-slash-compilation/
-Search bsPVK(const ll x, const std::vector<ll>& array, BinStruct& s) {
+Search __attribute__ ((noinline)) bsPVK(const ll x, const std::vector<ll>& array, BinStruct& s) {
   (void)s;
   int leftIndex = 0;                                                               
   int n = array.size();                                                            
@@ -208,7 +208,7 @@ Search bsPVK(const ll x, const std::vector<ll>& array, BinStruct& s) {
   return Search{leftIndex, steps};
 }
 
-Search bsPVKEq2(const ll x, const std::vector<ll>& array, BinStruct& s) {
+Search __attribute__ ((noinline)) bsPVKEq2(const ll x, const std::vector<ll>& array, BinStruct& s) {
   (void)s;
   const int MIN_EQ_SZ = 2;
   int leftIndex = 0;                                                               
@@ -236,7 +236,7 @@ Search bsPVKEq2(const ll x, const std::vector<ll>& array, BinStruct& s) {
 }
 
 template<int MIN_RANK_SZ>
-Search bsRank(const ll y, const std::vector<ll>& a, BinStruct& s) {
+Search __attribute__ ((noinline)) bsRank(const ll y, const std::vector<ll>& a, BinStruct& s) {
   (void)s;
   int l = 0;
   int n = a.size();
@@ -259,7 +259,7 @@ Search bsRank(const ll y, const std::vector<ll>& a, BinStruct& s) {
 }
 
 template<int MIN_RANK_SZ, int K>
-Search bsRank2(const ll y, const std::vector<ll>& a, BinStruct& s) {
+Search __attribute__ ((noinline)) bsRank2(const ll y, const std::vector<ll>& a, BinStruct& s) {
   (void)s;
   const int MIN_M = MIN_RANK_SZ / K;
   int l = 0;
@@ -479,7 +479,7 @@ Search isIntDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
 }
 
 // L + (R - L)(y - yL) / (yR - yL)
-Search isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
+Search __attribute__ ((noinline)) isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
