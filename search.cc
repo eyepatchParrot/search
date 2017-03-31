@@ -147,13 +147,13 @@ Search bs(const ll k, const std::vector<ll>& a, BinStruct& s) {
   (void)s;
   unsigned l = 0;
   unsigned r = a.size();
-  Search ret = Search{-1, 0};
+  int steps = 0;
 
-  while (r - l > 0) {
+  while (r - l > 1) {
     assert(l < r);    // ordering check
     assert(l+r >= r); // overflow check
     unsigned m = (l+r) / 2;
-    ret.steps++;
+    steps++;
     if (a[m] < k) {
       l = m + 1;
     } else if (a[m] > k) {
@@ -164,49 +164,33 @@ Search bs(const ll k, const std::vector<ll>& a, BinStruct& s) {
       //break;
     }
   }
-  ret.ix = l;
-  assert(ret.ix != -1);
-  assert(a[ret.ix] == k);
-
-  return ret;
+  assert(a[l] == k);
+  return Search{(int)l, steps};
 }
 
-Search bs3(const ll y, const std::vector<ll>& a, BinStruct& s) {
+Search bsNoEq(const ll k, const std::vector<ll>& a, BinStruct& s) {
   (void)s;
-  int l = 0;
-  int w = a.size();
+  unsigned l = 0;
+  unsigned r = a.size();
   int steps = 0;
-  while (w > 0) {
-      w >>= 1;
-      steps++;
-      if (a[l+w] < y) {
-          l += w;
-      } else if (a[l+1] == y) {
-          w = 0;
-      }
+
+  while (r - l > 1) {
+    assert(l < r);    // ordering check
+    assert(l+r >= r); // overflow check
+    unsigned m = (l+r) / 2;
+    steps++;
+    if (a[m] <= k) {
+      l = m;
+    } else if (a[m] > k) {
+      r = m;
+    }
   }
-  //assert(a[l] == y);
-  return Search{l, steps};
+  assert(a[l] == k);
+  return Search{(int)l, steps};
 }
 
 // PVK : https://pvk.ca/Blog/2015/11/29/retrospective-on-binary-search-and-on-compression-slash-compilation/
-Search bsPVK(const ll y, const std::vector<ll>& a, BinStruct& s) {
-  (void)s;
-  int l = 0;
-  int n = a.size();
-  int m;
-  int steps = 0;
-  while ((m = n / 2) > 0) {
-    steps++;
-    n -= a[l+m] == y ? n : m;
-    l += a[l+m] <= y ? m : 0;
-  }
-  assert(a[l] == y);
-  return Search{l, steps};
-}
-
-
-Search bsPVK_2(const ll x, const std::vector<ll>& array, BinStruct& s) {
+Search bsPVK(const ll x, const std::vector<ll>& array, BinStruct& s) {
   (void)s;
   int leftIndex = 0;                                                               
   int n = array.size();                                                            
@@ -224,26 +208,33 @@ Search bsPVK_2(const ll x, const std::vector<ll>& array, BinStruct& s) {
   return Search{leftIndex, steps};
 }
 
-template <int MIN_EQ_SZ>
-Search bs2(const ll y, const std::vector<ll>& a, BinStruct& s) {
+Search bsPVKEq2(const ll x, const std::vector<ll>& array, BinStruct& s) {
   (void)s;
-  int l = 0;
-  int n = a.size();
-  int m;
+  const int MIN_EQ_SZ = 2;
+  int leftIndex = 0;                                                               
+  int n = array.size();                                                            
+  int half;
   int steps = 0;
-  while ((m = n / 2) > MIN_EQ_SZ) {
-    steps++;
-    n -= m;
-    l += a[l+m] <= y ? m : 0;
-  }
-  while ((m = n / 2) > 0) {
-    steps++;
-    n -= a[l+m] == y ? n : m;
-    l += a[l+m] <= y ? m : 0;
-  }
-  assert(a[l] == y);
-  return Search{l, steps};
+  if ((half = n) > MIN_EQ_SZ) {
+    do {
+        half /= 2;
+        steps++;
+	n -= half;
+        leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+    } while ((half = n) > MIN_EQ_SZ);
+  }                                                                                
+  if ((half = n) > 1) {
+    do {
+        half /= 2;
+        steps++;
+        n = array[leftIndex + half] == x ? 0 : n - half;
+        leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+    } while ((half = n) > 1);
+  }                                                                                
+  assert(array[leftIndex] == x);  
+  return Search{leftIndex, steps};
 }
+
 template<int MIN_RANK_SZ>
 Search bsRank(const ll y, const std::vector<ll>& a, BinStruct& s) {
   (void)s;
@@ -266,6 +257,7 @@ Search bsRank(const ll y, const std::vector<ll>& a, BinStruct& s) {
   assert(a[l] == y);
   return Search{l, steps};
 }
+
 template<int MIN_RANK_SZ, int K>
 Search bsRank2(const ll y, const std::vector<ll>& a, BinStruct& s) {
   (void)s;
@@ -452,69 +444,6 @@ Search leapSearch(const ll k, const std::vector<ll>& a, IntStruct& s) {
   return ret;
 }
 
-Search isFp(const ll y, const std::vector<ll>& a, IntStruct& s) {
-  Search ret = Search{-1, 0};
-  int l = 0;
-  int r = a.size() - 1;
-  assert(r - l >= 0); // assume non-empty vector
-  double yR = a[r], yL = a[l], yY = y;
-  
-  while (r - l > 0) {
-    double p = 1.0 / (yR - yL) * (yY - yL);
-    int m = l + (int)(p * (r-l));
-    assert(m <= r);
-    assert(m >= l);
-    ret.steps++;
-    if (y < a[m]) {
-      // over estimate
-      r = m - 1;
-      yR = a[r];
-    } else if (y > a[m]) {
-      // under estimate
-      l = m + 1;
-      yL = a[l];
-    } else {
-      ret.ix = m;
-      return ret;
-    }
-  }
-  if (y == a[l]) {
-    ret.ix = l;
-  }
-
-  return ret;
-}
-
-Search isDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
-  Search ret = Search{-1, 0};
-  int l = 0;
-  int r = a.size() - 1;
-  assert(r - l >= 0); // assume non-empty vector
-  while (r - l > 0) {
-    ll yR = a[r], yL = a[l];
-    ll off = (y - yL) / ((yR - yL) / (r-l));
-    int m = l + off;
-    assert(m <= r);
-    assert(m >= l);
-    ret.steps++;
-    if (y < a[m]) {
-      // over estimate
-      r = m - 1;
-    } else if (y > a[m]) {
-      // under estimate
-      l = m + 1;
-    } else {
-      ret.ix = m;
-      return ret;
-    }
-  }
-  if (y == a[l]) {
-    ret.ix = l;
-  }
-
-  return ret;
-}
-
 // L + (R - L)(y - yL) / (yR - yL)
 Search isIntDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   Search ret = Search{-1, 0};
@@ -564,55 +493,6 @@ Search isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
     ll m = l + scOff;
     assert(m <= r);
     assert(m >= l);
-    ret.steps++;
-    if (y < a[m]) {
-      // over estimate
-      r = m - 1;
-      yR = a[r];
-    } else if (y > a[m]) {
-      // under estimate
-      l = m + 1;
-      yL = a[l];
-    } else {
-      ret.ix = m;
-      return ret;
-    }
-  }
-  if (y == a[l]) {
-    ret.ix = l;
-  }
-
-  return ret;
-}
-Search isLUTDiv2(const ll y, const std::vector<ll>& a, IntStruct& s) {
-  Search ret = Search{-1, 0};
-  ll l = 0, r = a.size() - 1;
-  assert(r - l >= 0); // assume non-empty vector
-  ll yR = a[r], yL = a[l];
-  const unsigned lgScale = s.lgScale;
-  while (r - l > 0) {
-    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
-    ll n = (r-l)*((y-yL) >> lgScale);
-    ll d = ((yR - yL) >> lgScale);
-    ll scOff = dL.div(n,d);
-    ll m = l + scOff;
-    if (m < l) m = l;
-    if (m > r) m = r;
-    assert(m <= r);
-    assert(m >= l);
-//#ifndef NDEBUG
-//    ll yS = y >> lgScale, yLS = yL >> lgScale, yRS = yR >> lgScale;
-//    ll scOff2 = r * ((y - yL) >> lgScale) + l * ((yR - y) >> lgScale);
-//    ll m2 = dL.div(scOff2, d);
-//    ll scOff3 = r * yS - r * yLS + l * yRS - l * yS;
-//    ll m3 = dL.div(scOff3 , (yRS - yLS));
-//    ll m4 = dL.div(r * ((y - yL) >> lgScale) , d) + dL.div(l * ((yR - y) >> lgScale) , d);
-//    ll m5 = dL.div(r * yS , d) - dL.div(r * yLS , d) + dL.div(l * yRS , d) - dL.div(l * yS , d);
-//    if ((int)(m - m2) * (int)(m-m2) > 1) printf("%d m2\n", (int)(m - m2));
-//    if ((int)(m - m3) * (int)(m-m3) > 1) printf("%d m3\n", (int)(m - m3));
-//    if ((int)(m - m4) * (int)(m-m4) > 1) printf("%d m4\n", (int)(m - m4));
-//    if ((int)(m - m5) * (int)(m-m5) > 1) printf("%d m5\n", (int)(m - m5));
-//#endif
     ret.steps++;
     if (y < a[m]) {
       // over estimate
@@ -893,12 +773,12 @@ int main() {
 
   printf("cycles,steps,maxSteps,worstVal,name\n");
   for (int i = 0; i < 10; i++) {
-    //RunBenchmark<BinStruct>(input, search, nNums, "bsBad", bs3);
+    RunBenchmark<BinStruct>(input, search, nNums, "bs", bs);
+    RunBenchmark<BinStruct>(input, search, nNums, "bsNoEq", bsNoEq);
     RunBenchmark<BinStruct>(input, search, nNums, "bsPVK", bsPVK);
-    RunBenchmark<BinStruct>(input, search, nNums, "bsPVK2", bsPVK_2);
-    RunBenchmark<BinStruct>(input, search, nNums, "bs16", bs2<8>);
-    //RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_4", bsRank2<16, 4>);
-    //RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_6", bsRank2<16, 6>);
+    RunBenchmark<BinStruct>(input, search, nNums, "bsPVKEq2", bsPVKEq2);
+    RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_4", bsRank2<16, 4>);
+    RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_6", bsRank2<16, 4>);
     //RunBenchmark<IntStruct>(input, search, nNums, "isIntDiv", isIntDiv);
     RunBenchmark<IntStruct>(input, search, nNums, "isLUTDiv", isLUTDiv);
     //RunBenchmark<IntStruct>(input, search, nNums, "isLUTDiv2", isLUTDiv2);
