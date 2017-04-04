@@ -670,8 +670,19 @@ PerfStats perfStats(std::vector<ll>& time, const std::vector<ll>& array, const s
 
 using BenchFn = Search (*)(const ll, const std::vector<ll>&, IntStruct&);
 
+struct RunStats {
+  ll maxSteps;
+  ll sumSteps, maxStepV;
+};
+
+struct TestStats {
+  std::string name;
+  std::vector<RunStats> runStats;
+  std::vector<std::tuple<ll, int> > cyclesByIx;
+};
+
 template <typename StructT, typename F>
-void RunBenchmark(std::vector<ll>& input, std::vector<std::tuple<ll, ll> >& order, ll nNums, const char* name, F f) {
+void RunBenchmark(const std::vector<ll>& input, const std::vector<std::tuple<ll, ll> >& order, ll nNums, F f, TestStats& ts) {
   unsigned A;
 
   std::vector<ll> array(input);
@@ -683,12 +694,14 @@ void RunBenchmark(std::vector<ll>& input, std::vector<std::tuple<ll, ll> >& orde
   for (ll i = 0; i < nNums; i++) {
     int steps = f(std::get<0>(order[i]), array, s).steps;
     sumSteps += steps;
-    if (steps > maxSteps) {
-      maxSteps = steps;
-      maxStepV = std::get<0>(order[i]);
-    }
+//    if (steps > maxSteps) {
+//      maxSteps = steps;
+//      maxStepV = std::get<0>(order[i]);
+//    }
   }
-  printf("%llu,%llu,%d,%llu,%s\n", __rdtscp(&A) - st, sumSteps, maxSteps, maxStepV, name);
+  ll dt = __rdtscp(&A) - st;
+  ts.runStats.push_back(RunStats{(ll)maxSteps, sumSteps, maxStepV});
+  ts.cyclesByIx.push_back(std::make_tuple(dt, ts.cyclesByIx.size()));
 }
 
 int main() {
@@ -771,18 +784,41 @@ int main() {
 //  }
 //  printf("sum,%llu\n", sum);
 
-  printf("cycles,steps,maxSteps,worstVal,name\n");
-  for (int i = 0; i < 10; i++) {
-    RunBenchmark<BinStruct>(input, search, nNums, "bs", bs);
-    RunBenchmark<BinStruct>(input, search, nNums, "bsNoEq", bsNoEq);
-    RunBenchmark<BinStruct>(input, search, nNums, "bsPVK", bsPVK);
-    RunBenchmark<BinStruct>(input, search, nNums, "bsPVKEq2", bsPVKEq2);
-    RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_4", bsRank2<16, 4>);
-    RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_6", bsRank2<16, 4>);
+
+  std::vector<TestStats> tests = { TestStats{"bs"}, TestStats{"bsNoEq"}, TestStats{"bsPVK"}, TestStats{"bsPVKEq2"}, TestStats{"isLUTDiv"}
+    //TestStats{"isLUTDiv", (void*)isLUTDiv}
+  };
+  //std::vector<std::string> tests = { "bs", "bsNoEq", "bsPVK", "bsPVKEq2" };
+  //std::vector<std::vector<std::tuple<ll, Debug> > testByRank(tests.size());
+  fprintf(stderr, "cycles,steps,maxSteps,worstVal,name\n");
+  const int N_RUNS = 1 << 18;
+  for (int i = 0; i < N_RUNS; i++) {
+    RunBenchmark<BinStruct>(input, search, nNums, bs, tests[0]);
+    RunBenchmark<BinStruct>(input, search, nNums, bsNoEq, tests[1]);
+    RunBenchmark<BinStruct>(input, search, nNums, bsPVK, tests[2]);
+    RunBenchmark<BinStruct>(input, search, nNums, bsPVKEq2, tests[3]);
+    RunBenchmark<IntStruct>(input, search, nNums, isLUTDiv, tests[4]);
+//    RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_4", bsRank2<16, 4>);
+//    RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_6", bsRank2<16, 4>);
     //RunBenchmark<IntStruct>(input, search, nNums, "isIntDiv", isIntDiv);
-    RunBenchmark<IntStruct>(input, search, nNums, "isLUTDiv", isLUTDiv);
+    //RunBenchmark<IntStruct>(input, search, nNums, "isLUTDiv", isLUTDiv);
     //RunBenchmark<IntStruct>(input, search, nNums, "isLUTDiv2", isLUTDiv2);
   }
+  bool first = true;
+  for (auto& t : tests) {
+    printf("%s%s", true != first ? "," : "", t.name.c_str());
+    std::sort(t.cyclesByIx.begin(), t.cyclesByIx.end());
+    first = false;
+  }
+  for (int i = 0; i < N_RUNS; i++) {
+    first = true;
+    printf("\n");
+    for (auto& ts : tests) {
+      printf("%s%llu", true != first ? "," : "", std::get<0>(ts.cyclesByIx[i]));
+      first = false;
+    }
+  }
+  printf("\n");
     //RunBenchmark<BinStruct>(input, search, nNums, "bs", binSearch);
     //RunBenchmark<BinStruct>(input, search, nNums, "bs4", bs4);
     //RunBenchmark<BinStruct>(input, search, nNums, "bs3", bs3);

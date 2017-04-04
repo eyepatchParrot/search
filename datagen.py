@@ -10,14 +10,18 @@ import random
 # ...
 # <numN>
 
-n = int(raw_input())
-dist = raw_input()
+if len(sys.argv) < 3:
+    print"Expecting datagen.py nNums numDistribution"
+    sys.exit(0)
+
+n = int(sys.argv[1])
+dist = sys.argv[2]
 if dist == "uniform":
     nums = [random.randint(1,sys.maxint) for _ in xrange(n)]
 elif dist == "zipf05" or dist == "zipf25":
     nums = numpy.random.zipf(1.05 if dist == "zipf05" else 1.25, n)
 else:
-    print "Unexpected distribution. Expecting uniform|zipf05|zipf25"
+    print "Unexpected distribution." + dist + " Expecting uniform|zipf05|zipf25"
     assert(False)
 print n
 print '\n'.join([str(x) for x in sorted(nums)])
