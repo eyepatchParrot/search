@@ -219,7 +219,7 @@ Search bsPVKEq2(const ll x, const std::vector<ll>& array, BinStruct& s) {
     do {
         half /= 2;
         steps++;
-	n -= half;
+        n -= half;
         leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
     } while ((half = n) > MIN_EQ_SZ);
   }                                                                                
@@ -480,11 +480,11 @@ Search isIntDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
 
 // L + (R - L)(y - yL) / (yR - yL)
 Search isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
-  Search ret = Search{-1, 0};
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
   ll yR = a[r], yL = a[l];
   const unsigned lgScale = s.lgScale;
+  int steps = 0;
   while (r - l > 0) {
     assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
     ll n = (r-l)*((y-yL) >> lgScale);
@@ -493,7 +493,7 @@ Search isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
     ll m = l + scOff;
     assert(m <= r);
     assert(m >= l);
-    ret.steps++;
+    steps++;
     if (y < a[m]) {
       // over estimate
       r = m - 1;
@@ -503,15 +503,12 @@ Search isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
       l = m + 1;
       yL = a[l];
     } else {
-      ret.ix = m;
-      return ret;
+      // TODO try removing eq check
+      return Search{(int)m, steps};
     }
   }
-  if (y == a[l]) {
-    ret.ix = l;
-  }
 
-  return ret;
+  return Search{(int)l, steps};
 }
 
 // base case linear search
@@ -671,8 +668,6 @@ PerfStats perfStats(std::vector<ll>& time, const std::vector<ll>& array, const s
 using BenchFn = Search (*)(const ll, const std::vector<ll>&, IntStruct&);
 
 struct RunStats {
-  ll maxSteps;
-  ll sumSteps, maxStepV;
 };
 
 struct TestStats {
@@ -682,26 +677,32 @@ struct TestStats {
 };
 
 template <typename StructT, typename F>
-void RunBenchmark(const std::vector<ll>& input, const std::vector<std::tuple<ll, ll> >& order, ll nNums, F f, TestStats& ts) {
+void RunBenchmark(const std::vector<ll>& input, const std::vector<std::tuple<ll, int> >& order, ll nNums, F f, TestStats& ts) {
   unsigned A;
 
   std::vector<ll> array(input);
   StructT s(array);
-  int maxSteps = -1;
-  ll maxStepV = -1;
-  ll sumSteps = 0;
+//  int maxSteps = -1;
+//  ll maxStepV = -1;
+//  ll sumSteps = 0;
+  int nEq = 0;
   ll st = __rdtsc();
   for (ll i = 0; i < nNums; i++) {
-    int steps = f(std::get<0>(order[i]), array, s).steps;
-    sumSteps += steps;
+    Search r = f(std::get<0>(order[i]), array, s);
+    bool eq = r.ix == std::get<1>(order[i]);
+    nEq += eq;
+    assert(eq);
+//    sumSteps += r.steps;
 //    if (steps > maxSteps) {
 //      maxSteps = steps;
 //      maxStepV = std::get<0>(order[i]);
 //    }
   }
   ll dt = __rdtscp(&A) - st;
-  ts.runStats.push_back(RunStats{(ll)maxSteps, sumSteps, maxStepV});
+  ts.runStats.push_back(RunStats{});
   ts.cyclesByIx.push_back(std::make_tuple(dt, ts.cyclesByIx.size()));
+  if (nEq != (int)nNums)
+    printf("%d < %llu matched\n", nEq, nNums);
 }
 
 int main() {
@@ -726,7 +727,7 @@ int main() {
 
   int nNums;
   std::vector<ll> input;
-  std::vector<std::tuple<ll, ll> > search;
+  std::vector<std::tuple<ll, int> > search;
 
   bool loaded = 1 == scanf("%d", &nNums); (void)loaded; // silence not used
   assert(loaded);
@@ -736,7 +737,7 @@ int main() {
     loaded = 1 == scanf("%llu", &x);
     assert(loaded);
     input.push_back(x == 0 ? 1 : x); // temporary measure to keep from div by 0
-    search.push_back(std::tuple<ll, ll>(x, i));
+    search.push_back(std::tuple<ll, int>(x, i));
   }
   std::vector<ll> t_lb(nNums), t_bs(nNums);
 
@@ -788,10 +789,7 @@ int main() {
   std::vector<TestStats> tests = { TestStats{"bs"}, TestStats{"bsNoEq"}, TestStats{"bsPVK"}, TestStats{"bsPVKEq2"}, TestStats{"isLUTDiv"}
     //TestStats{"isLUTDiv", (void*)isLUTDiv}
   };
-  //std::vector<std::string> tests = { "bs", "bsNoEq", "bsPVK", "bsPVKEq2" };
-  //std::vector<std::vector<std::tuple<ll, Debug> > testByRank(tests.size());
-  fprintf(stderr, "cycles,steps,maxSteps,worstVal,name\n");
-  const int N_RUNS = 1 << 18;
+  const int N_RUNS = 1 << 15;
   for (int i = 0; i < N_RUNS; i++) {
     RunBenchmark<BinStruct>(input, search, nNums, bs, tests[0]);
     RunBenchmark<BinStruct>(input, search, nNums, bsNoEq, tests[1]);
@@ -810,7 +808,7 @@ int main() {
     std::sort(t.cyclesByIx.begin(), t.cyclesByIx.end());
     first = false;
   }
-  for (int i = 0; i < N_RUNS; i++) {
+  for (int i = 0; i < N_RUNS && i < 10; i++) {
     first = true;
     printf("\n");
     for (auto& ts : tests) {

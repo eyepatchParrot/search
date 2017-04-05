@@ -4,7 +4,6 @@ PROFILE=$(GC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(GC) $(OPT)
 
 profile: search.cc
-	#$(GC) -S -DNDEBUG -Og search.cc
 	$(PROFILE) search.cc -o $@
 
 debug: search.cc
