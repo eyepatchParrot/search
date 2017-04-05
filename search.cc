@@ -99,7 +99,7 @@ struct DivLut {
     ll q = quot(n, rN, totalShift);
 #ifndef NDEBUG
     ll diff = (n/d) - q;
-    if (diff > 2) {
+    if (diff > 10) {
       printf("%llu / %llu ~= %llu * %llu / 2^%llu (2^%llu)\n", n, d, n, rN, totalShift, lg_rDT[r]);
       printf("%llu = %llu - %llu r %llu\n", diff, n/d, q, r);
       assert(q * rN >= q);
@@ -479,7 +479,7 @@ Search isIntDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
 }
 
 // L + (R - L)(y - yL) / (yR - yL)
-Search isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
+Search is(const ll y, const std::vector<ll>& a, IntStruct& s) {
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
   ll yR = a[r], yL = a[l];
@@ -511,79 +511,85 @@ Search isLUTDiv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   return Search{(int)l, steps};
 }
 
-// base case linear search
-// L + (R - L)(y - yL) / (yR - yL)
-Search isScLn(const ll y, const std::vector<ll>& a, IntStruct& s) {
-  Search ret = Search{-1, 0};
-  int l = 0;
-  int r = a.size() - 1;
+Search is2(const ll y, const std::vector<ll>& a, IntStruct& s) {
+  ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
-  while (r - l > 2) {
-    ll yR = a[r], yL = a[l];
-    assert(yR - yL > (1ULL << s.lgScale) && (y == yL || y - yL > (1ULL << s.lgScale)));
-    ll d = ((yR - yL) >> s.lgScale);
-    ll scOff = (r-l) * ((y - yL) >> s.lgScale) / d;
-    int m = l + scOff;
+  ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
+  int steps = 0;
+  while (r - l > 0) {
+    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
+    ll n = (r-l)*((y-yL) >> lgScale);
+    ll d = ((yR - yL) >> lgScale);
+    if (n < d) break; // if n < d, n / d == 0, so no progress made
+
+    ll scOff = dL.div(n,d);
+    ll m = l + scOff;
     assert(m <= r);
     assert(m >= l);
-    ret.steps++;
+    steps++;
     if (y < a[m]) {
       // over estimate
       r = m - 1;
+      yR = a[r];
     } else if (y > a[m]) {
       // under estimate
       l = m + 1;
+      yL = a[l];
     } else {
-      ret.ix = m;
-      return ret;
+      return Search{(int)m, steps};
     }
   }
-  while (r-l >= 0) {
-    ret.steps++;
-    if (y > a[l]) {
-      l++;
-    } else {
-      ret.ix = l;
-      return ret;
-    }
+
+  // this too slow if not in there
+  while (l < r) {
+    steps++;
+    r = y == a[l] ? l : r;
+    l++;
   }
-  return ret;
+
+  return Search{(int)r, steps};
 }
 
-// C = (R - L - 2)(y - yL)/(yR - yL)
-Search isExc(const ll y, const std::vector<ll>& a, IntStruct& s) {
+Search is3(const ll y, const std::vector<ll>& a, IntStruct& s) {
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
-  ll yL = a[l], yR = a[r];
-  Search ret = Search{-1, 2};
-  while (r - l > 2) {
-    assert(yR - yL > (1ULL << s.lgScale) && (y == yL || y - yL > (1ULL << s.lgScale)));
-    ll n = ((y - yL) >> s.lgScale), d = ((yR - yL) >> s.lgScale), w = (r-l-2);
-    ll m = l + 1 + w * n / d;
-    assert(m < r);
-    assert(m > l);
-    ret.steps++;
+  ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
+  int steps = 0;
+  while (r - l > 0) {
+    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
+    ll n = (r-l)*((y-yL) >> lgScale);
+    ll d = ((yR - yL) >> lgScale);
+
+    ll scOff = dL.div(n,d);
+    if (scOff == 0) break; // if n < d, n / d == 0, so no progress made
+    ll m = l + scOff;
+    assert(m <= r);
+    assert(m >= l);
+    steps++;
     if (y < a[m]) {
       // over estimate
-      r = m;
-      yR = a[m];
-    } else if (y > a[m]) {
-      // under estimate
-      l = m;
-      yL = a[m];
+      r = m - 1;
+      yR = a[r];
+//    } else if (y > a[m]) {
+//      // under estimate
+//      l = m;
+//      yL = a[l];
     } else {
-      ret.ix = m;
-      return ret;
+      l = m;
+      yL = a[l];
     }
   }
-  if (a[l+1] == y) {
-    ret.ix = l + 1;
-  } else if (a[0] == y) {
-    ret.ix = 0;
-  } else if (a.back() == y) {
-    ret.ix = r;
+
+  // this too slow if not in there
+  while (l < r) {
+    //steps++;
+    r = y == a[l] ? l : r;
+    l++;
   }
-  return ret;
+
+  return Search{(int)r, steps};
 }
 
 Search intSearch(const ll y, const std::vector<ll>& a, IntStruct& s) {
@@ -686,21 +692,26 @@ void RunBenchmark(const std::vector<ll>& input, const std::vector<std::tuple<ll,
 //  ll maxStepV = -1;
 //  ll sumSteps = 0;
   int nEq = 0;
+  //ll nIx = 0;
   ll st = __rdtsc();
   for (ll i = 0; i < nNums; i++) {
     Search r = f(std::get<0>(order[i]), array, s);
+    //nIx += r.ix;
     bool eq = r.ix == std::get<1>(order[i]);
     nEq += eq;
     assert(eq);
 //    sumSteps += r.steps;
-//    if (steps > maxSteps) {
-//      maxSteps = steps;
+//    if (r.steps > maxSteps) {
+//      maxSteps = r.steps;
 //      maxStepV = std::get<0>(order[i]);
 //    }
   }
   ll dt = __rdtscp(&A) - st;
   ts.runStats.push_back(RunStats{});
   ts.cyclesByIx.push_back(std::make_tuple(dt, ts.cyclesByIx.size()));
+//  if (nIx != nNums * (nNums - 1) / 2)
+//      printf("mess up\n");
+  //printf("%s %llu steps, %d %llu \n", ts.name.c_str(), sumSteps, maxSteps, maxStepV);
   if (nEq != (int)nNums)
     printf("%d < %llu matched\n", nEq, nNums);
 }
@@ -786,7 +797,7 @@ int main() {
 //  printf("sum,%llu\n", sum);
 
 
-  std::vector<TestStats> tests = { TestStats{"bs"}, TestStats{"bsNoEq"}, TestStats{"bsPVK"}, TestStats{"bsPVKEq2"}, TestStats{"isLUTDiv"}
+  std::vector<TestStats> tests = { TestStats{"bs"}, TestStats{"bsNoEq"}, TestStats{"bsPVK"}, TestStats{"bsPVKEq2"}, TestStats{"is"}, TestStats{"is2"}, TestStats{"is3"}
     //TestStats{"isLUTDiv", (void*)isLUTDiv}
   };
   const int N_RUNS = 1 << 15;
@@ -795,7 +806,9 @@ int main() {
     RunBenchmark<BinStruct>(input, search, nNums, bsNoEq, tests[1]);
     RunBenchmark<BinStruct>(input, search, nNums, bsPVK, tests[2]);
     RunBenchmark<BinStruct>(input, search, nNums, bsPVKEq2, tests[3]);
-    RunBenchmark<IntStruct>(input, search, nNums, isLUTDiv, tests[4]);
+    RunBenchmark<IntStruct>(input, search, nNums, is, tests[4]);
+    RunBenchmark<IntStruct>(input, search, nNums, is2, tests[5]);
+    RunBenchmark<IntStruct>(input, search, nNums, is3, tests[6]);
 //    RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_4", bsRank2<16, 4>);
 //    RunBenchmark<BinStruct>(input, search, nNums, "bsRank16_6", bsRank2<16, 4>);
     //RunBenchmark<IntStruct>(input, search, nNums, "isIntDiv", isIntDiv);
