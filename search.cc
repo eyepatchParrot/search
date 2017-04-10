@@ -658,59 +658,103 @@ Search is2(const ll y, const std::vector<ll>& a, IntStruct& s) {
     }
   }
 
-  // this too slow if not in there
-  while (l < r) {
-    r = y == a[l] ? l : r;
-    l++;
+  while (a[l] < y && l < r) l++;
+  return Search{(int)l, steps};
+}
+
+Search is4(const ll y, const std::vector<ll>& a, IntStruct& s) {
+  ll l = 0, r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
+  int steps = 0;
+  while (r - l > 0) {
+    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
+    ll n = (r-l)*((y-yL) >> lgScale);
+    ll d = ((yR - yL) >> lgScale);
+    if (n < d) break;
+
+    //steps++;
+    ll scOff = dL.div(n,d);
+    ll m = l + scOff;
+//    if (m == r) {
+//      while (a[r] > y && r > l) r--;
+//      return Search{(int)r, steps};
+//    }
+    assert(m <= r);
+    assert(m >= l);
+    if (y < a[m]) {
+      // over estimate
+      r = m - 1;
+      yR = a[r];
+    } else if (y > a[m]) {
+      // under estimate
+      l = m + 1;
+      yL = a[l];
+    } else {
+      return Search{(int)m, steps};
+    }
   }
 
-  return Search{(int)r, steps};
+  while (a[l] < y && l < r) l++;
+  return Search{(int)l, steps};
 }
 
 Search is3(const ll y, const std::vector<ll>& a, IntStruct& s) {
-  ll l = 0, n = a.size() - 1;
-  ll yL = a[l], yR = a[n];
+  ll l = 0, r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  //ll yR = a[r], yL = a[l];
   const unsigned lgScale = s.lgScale;
   int steps = 0;
-  while (n > 2) {
-    ll p = n*((y-yL) >> lgScale);
-    ll q = ((yR - yL) >> lgScale);
-    if (p < q) break; // if n < d, n / d == 0, so no progress made
-
-    steps++;
-    // TODO try using off twice
-    ll off = dL.div(p,q);
-    ll m = l + off;
-    assert(off <= n);
-    assert(m >= l);
-    n = y < a[m] ? m - l - 1 : l + n - m;
-    l = y < a[m] ? l : m;
-    yL = a[l];
-    yR = a[l+n];
-//    if (y < a[m]) {
-//      // over estimate
-//      n = m - l - 1;
-//      assert(l + n == m - 1);
-//      yR = a[l+n];
-//    } else if (y > a[m]) {
-//      // under estimate
-//      n = l + n - m - 1;
-//      l = m + 1;
-//      yL = a[l];
-//    } else {
-//      return Search{(int)m, steps};
-//    }
+  //  printf("y %llu\n", y);
+  ll d = (a[r] - a[l]) / (r-l);
+  ll m = l + (y - a[l]) / d;
+  while (r - l > 0) {
+#ifndef NDEBUG
+    printf(" %llu", m);
+#endif
+    if (y < a[m]) {
+      r = m-1;
+      ll n = a[r] - y;
+      if (n < d) {
+        int oldR = r;
+        while (a[r] > y) r--;
+        steps += oldR - r;
+        return Search{(int)r, steps};
+      }
+      m = r - dL.div(n, d);
+      steps++;
+      if (m <= l) {
+        int oldL = l;
+        while (a[l] < y) l++;
+        steps += l - oldL;
+        return Search{(int)l, steps};
+      }
+    } else if (y > a[m]) {
+      l = m+1;
+      ll n = y - a[l];
+      if (n < d) {
+        int oldL = l;
+        while (a[l] < y) l++;
+        steps += l - oldL;
+        return Search{(int)l, steps};
+      }
+      m = l + dL.div(n,  d);
+      steps++;
+      if (m >= r) {
+        int oldR = r;
+        while (a[r] > y) r--;
+        steps += oldR - r;
+        return Search{(int)r, steps};
+      }
+    } else {
+      return Search{(int)m, steps};
+    }
   }
 
-  // this too slow if not in there
-  ll r = l + n;
-  while (l < r) {
-    r = y == a[l] ? l : r;
-    l++;
-  }
-
-  return Search{(int)r, steps};
+  return Search{(int)l, steps};
 }
+
 
 //Search is3(const ll y, const std::vector<ll>& a, IntStruct& s) {
 //  int l = 0, n = a.size()-1;
@@ -783,10 +827,13 @@ void RunBenchmark(const std::vector<ll>& input, const std::vector<std::tuple<ll,
   //ll nIx = 0;
   ll st = __rdtsc();
   for (ll i = 0; i < nNums; i++) {
+#ifndef NDEBUG
+    printf("\n%d", std::get<1>(order[i]));
+#endif
     Search r = f(std::get<0>(order[i]), array, s);
     //nIx += r.ix;
     bool eq = r.ix == std::get<1>(order[i]);
-    sumSteps += r.steps1;
+//    sumSteps += r.steps1;
     nEq += eq;
     assert(eq);
   }
@@ -841,11 +888,15 @@ int main() {
 
   typedef TestStats TS;
 
-  std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"},TS{"bsPVKEq2"}, TS{"is3"}
-  //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}, TS{"bsPVKEq2"}, TS{"is2"}
+  //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
+  std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}, TS{"bsPVKEq2"}, TS{"is3"}, TS{"bsPVKEq2"}, TS{"is4"}
   };
   //const int N_RUNS = 1 << 5;
+#ifndef NDEBUG
+  const int N_RUNS = 1 << 1;
+#else
   const int N_RUNS = 1 << 13;
+#endif
   time_t lastTime = time(NULL);
 
   for (int i = 0; i < N_RUNS; i++) {
@@ -859,17 +910,20 @@ int main() {
     RunBenchmark<IntStruct, IsFn, is2>(input, search, nNums, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(input, search, nNums, tests[testIx++]);
     RunBenchmark<IntStruct, IsFn, is3>(input, search, nNums, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(input, search, nNums, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is4>(input, search, nNums, tests[testIx++]);
     //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(input, search, nNums, tests[testIx++]);
     //RunBenchmark<IntStruct, IsFn, is2>(input, search, nNums, tests[testIx++]);
     assert((size_t)testIx == tests.size());
   }
+  fprintf(stderr, "\n");
   bool first = true;
   for (auto& t : tests) {
     printf("%s%s", true != first ? "," : "", t.name.c_str());
     std::sort(t.cyclesByIx.begin(), t.cyclesByIx.end());
     first = false;
     assert(t.cyclesByIx.size() == N_RUNS);
-    printf("%s,%d\n", t.name.c_str(), t.runStats[0].sumSteps1);
+//    printf("%s,%d\n", t.name.c_str(), t.runStats[0].sumSteps1);
   }
   for (int i = 0; i < N_RUNS && i < 10; i++) {
     first = true;
