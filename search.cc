@@ -185,6 +185,7 @@ struct DivLut2 {
   int lg_pT[L];   // lg rNT[i]
 
   ll div(const ll n, const ll d) const {
+    if (n < d) return 0; // can't handle shifts > 63
     ll p;
     int lg_p, lg_q;
     one_d(d, p, lg_p, lg_q);
@@ -208,17 +209,21 @@ struct DivLut2 {
     }
   }
 
-  static ll abc_d(const ll a, const int lg_a, const ll b, const int lg_b, const ll c, const int lg_c, const int lg_d) {
+  static ll abc_d(ll a, const int lg_a, const ll b, const int lg_b, const ll c, const int lg_c, int lg_d) {
     int k = lg_a + lg_b + lg_c - 64;
-    if (k > 0) {
-      // shift right until multiplied together they sum to less than 64
-      a >>= k;
-      lg_d -= k;
-      a = a * b * c;
-      return (a * b * c) >> lg_d;
-    } else {
-      return (a * b * c) >> lg_d;
-    }
+    if (lg_d >= 64+k) return 0;
+    a >>= k;
+    return (a * b * c) >> (lg_d - k);
+//    if (lg_d >= k) return 0;
+//    k -= 64;
+//    if (k > 0) {
+//      // shift right until multiplied together they sum to less than 64
+//      a >>= k;
+//      lg_d -= k;
+//      return (a * b * c) >> lg_d;
+//    } else {
+//      return (a * b * c) >> lg_d;
+//    }
   }
 
 
@@ -643,44 +648,9 @@ Search is2(const ll y, const std::vector<ll>& a, IntStruct& s) {
     //steps++;
     ll scOff = dL.div(n,d);
     ll m = l + scOff;
-    assert(m <= r);
-    assert(m >= l);
-    if (y < a[m]) {
-      // over estimate
-      r = m - 1;
-      yR = a[r];
-    } else if (y > a[m]) {
-      // under estimate
-      l = m + 1;
-      yL = a[l];
-    } else {
-      return Search{(int)m, steps};
-    }
-  }
-
-  while (a[l] < y && l < r) l++;
-  return Search{(int)l, steps};
-}
-
-Search is4(const ll y, const std::vector<ll>& a, IntStruct& s) {
-  ll l = 0, r = a.size() - 1;
-  assert(r - l >= 0); // assume non-empty vector
-  ll yR = a[r], yL = a[l];
-  const unsigned lgScale = s.lgScale;
-  int steps = 0;
-  while (r - l > 0) {
-    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
-    ll n = (r-l)*((y-yL) >> lgScale);
-    ll d = ((yR - yL) >> lgScale);
-    if (n < d) break;
-
-    //steps++;
-    ll scOff = dL.div(n,d);
-    ll m = l + scOff;
-//    if (m == r) {
-//      while (a[r] > y && r > l) r--;
-//      return Search{(int)r, steps};
-//    }
+#ifndef NDEBUG
+    printf(" %llu", m);
+#endif
     assert(m <= r);
     assert(m >= l);
     if (y < a[m]) {
@@ -703,103 +673,49 @@ Search is4(const ll y, const std::vector<ll>& a, IntStruct& s) {
 Search is3(const ll y, const std::vector<ll>& a, IntStruct& s) {
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
-  //ll yR = a[r], yL = a[l];
+  ll yR = a[r], yL = a[l];
   const unsigned lgScale = s.lgScale;
   int steps = 0;
-  //  printf("y %llu\n", y);
-  ll d = (a[r] - a[l]) / (r-l);
-  ll m = l + (y - a[l]) / d;
   while (r - l > 0) {
+    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
+    ll d = yR - yL;
+    ll p;
+    int lg_p, lg_q;
+    dL2.one_d(d, p, lg_p, lg_q);
+
+    //ll n = (r-l)*((y-yL) >> lgScale);
+    ll n = y - yL;
+    if (n < 2) break; // could also work with n < d >> lgScale
+    int lg_n = lgl(n);
+
+    ll scOff = dL2.abc_d(n, lg_n, p, lg_p, r-l, lgScale, lg_q);
+    //if (n < d) break; // if n < d, n / d == 0, so no progress made
+
+    //steps++;
+    //ll scOff = dL2.div(n,d);
+    if (scOff == 0) break;
+    ll m = l + scOff;
 #ifndef NDEBUG
     printf(" %llu", m);
 #endif
+    assert(m <= r);
+    assert(m >= l);
     if (y < a[m]) {
-      r = m-1;
-      ll n = a[r] - y;
-      if (n < d) {
-        int oldR = r;
-        while (a[r] > y) r--;
-        steps += oldR - r;
-        return Search{(int)r, steps};
-      }
-      m = r - dL.div(n, d);
-      steps++;
-      if (m <= l) {
-        int oldL = l;
-        while (a[l] < y) l++;
-        steps += l - oldL;
-        return Search{(int)l, steps};
-      }
+      // over estimate
+      r = m - 1;
+      yR = a[r];
     } else if (y > a[m]) {
-      l = m+1;
-      ll n = y - a[l];
-      if (n < d) {
-        int oldL = l;
-        while (a[l] < y) l++;
-        steps += l - oldL;
-        return Search{(int)l, steps};
-      }
-      m = l + dL.div(n,  d);
-      steps++;
-      if (m >= r) {
-        int oldR = r;
-        while (a[r] > y) r--;
-        steps += oldR - r;
-        return Search{(int)r, steps};
-      }
+      // under estimate
+      l = m + 1;
+      yL = a[l];
     } else {
       return Search{(int)m, steps};
     }
   }
 
+  while (a[l] < y && l < r) l++;
   return Search{(int)l, steps};
 }
-
-
-//Search is3(const ll y, const std::vector<ll>& a, IntStruct& s) {
-//  int l = 0, n = a.size()-1;
-//  const unsigned lgScale = s.lgScale;
-//  int steps = 0;
-//  while (n > 1) {
-//    const int lg_n = lg_flr(n) - 1;
-//    const int R = l + (1 << lg_n);
-//    ll p = y-a[l];
-//    ll q = (a[R] - a[l]) >> lg_n;
-//    if (p < q) break;
-//
-//    steps++;
-//    int scOff = dL.div(p,q);
-//    int m = l + scOff;
-//    if (m > R) {
-//      l = n - R;
-//      continue;
-//    }
-//    assert(m <= l + n);
-//    assert(m >= l);
-//    if (y < a[m]) {
-//      // over estimate
-//      n = m - l - 1;
-//      assert(l + n < m);
-//    } else if (y > a[m]) {
-//      // under estimate
-//      const int tR = l + n;
-//      n -= scOff + 1;
-//      l = m+1;
-//      assert(l + n == tR);
-//    } else {
-//      return Search{(int)m, steps};
-//    }
-//  }
-//
-//  // this too slow if not in there
-//  int r = l + n;
-//  while (l < r) {
-//    r = y == a[l] ? l : r;
-//    l++;
-//  }
-//
-//  return Search{(int)r, steps};
-//}
 
 using BsFn = Search (*)(const ll, const std::vector<ll>&, BinStruct&);
 using IsFn = Search (*)(const ll, const std::vector<ll>&, IntStruct&);
@@ -889,7 +805,9 @@ int main() {
   typedef TestStats TS;
 
   //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
-  std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}, TS{"bsPVKEq2"}, TS{"is3"}, TS{"bsPVKEq2"}, TS{"is4"}
+  std::vector<TS> tests = {
+    TS{"bsPVKEq2"}, TS{"is2"}
+    ,TS{"bsPVKEq2"}, TS{"is3"}
   };
   //const int N_RUNS = 1 << 5;
 #ifndef NDEBUG
@@ -910,10 +828,6 @@ int main() {
     RunBenchmark<IntStruct, IsFn, is2>(input, search, nNums, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(input, search, nNums, tests[testIx++]);
     RunBenchmark<IntStruct, IsFn, is3>(input, search, nNums, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(input, search, nNums, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is4>(input, search, nNums, tests[testIx++]);
-    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(input, search, nNums, tests[testIx++]);
-    //RunBenchmark<IntStruct, IsFn, is2>(input, search, nNums, tests[testIx++]);
     assert((size_t)testIx == tests.size());
   }
   fprintf(stderr, "\n");
