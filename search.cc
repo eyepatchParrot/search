@@ -132,7 +132,7 @@ struct DivLut {
   int lg_rDT[L]; // 2^8 * lg(rD)
   
   ll div(const ll n, const ll d) const {
-    assert(n >= d);
+//    assert(n >= d);
 //    if (n < d) return 0; // can't handle shifts > 63
     // approximate divisor
     ll rN;
@@ -208,10 +208,28 @@ struct IntStructT {
 };
 
 struct OracleStruct {
-  OracleStruct(const std::vector<ll>& _a, const std::vector<int>& _i) : a(_a), i(_i), j(0) { }
+  // note that to ensure fast code, offset is always to the left, which means that offset searches wont have the full offset
+  OracleStruct(const std::vector<ll>& _a, const std::vector<int>& _i, const int offset = 0, const bool rnd = false) : a(_a), j(0) {
+    // easier to make a single long pipeline instead of a branch
+    // There's blocking on the output to be produced, instead of being able to go through the steady state throughput
+    // You may end up paying the latency cost multiple times instead of just once with left-deep
+    // single relation plan because only one table in FROM clause
+    for (int ti : _i) {
+      int tti = ti;
+      if (rnd && ((rand() % 2) == 0)) {
+        tti += offset;
+      } else {
+        tti -= offset;
+      }
+      unsigned r = a.size() - 1;
+      tti = tti < 0 ? 0 : tti;
+      tti = tti > r ? r : tti;
+      i.push_back(tti);
+    }
+  }
 
   const std::vector<ll> a;
-  const std::vector<int> i;
+  std::vector<int> i;
   int j;
 };
 
@@ -271,63 +289,29 @@ Search is(const ll y, const IntStruct& s) {
   return Search{(int)m};
 }
 
-Search isT(const ll y, const IntStructT& s) {
+Search is2(const ll y, const IntStruct& s) {
   const std::vector<ll>& a = s.a;
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
   ll yR = a[r], yL = a[l];
-  ll yS = y >> s.lgScale;
-  ll n = (r-l)*(yS-yL);
-  ll d = yR - yL;
+  const unsigned lgScale = s.lgScale;
+  ll n = (r-l)*((y-yL) >> lgScale);
+  ll d = ((yR - yL) >> lgScale);
   ll m = l;
-  if (n >= d) {
-    ll scOff = dL.div(n,d);
-    m = m + scOff;
-#ifndef NDEBUG
-    printf(" %ld", m);
-#endif
-    assert(m <= r);
-    assert(m >= l);
+  ll scOff = dL.div(n,d);
+  m = m + scOff + 1;
+  assert(m <= r);
+  assert(m >= l);
 
-    assert(a[m] > a[l]); // we know this because n would've been less than d
-    if (a[m] > yS) {
-      do { m--; } while (a[m] > yS);
-      return Search{(int)m};
-    }
+  assert(a[m] > a[l]); // we know this because n would've been less than d
+  if (a[m] > y) {
+    do { m--; } while (a[m] > y);
+    return Search{(int)m};
   }
 
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
-  while (a[m] < yS && m < r) m++;
-  assert(s.array[m] == y);
-  return Search{(int)m};
-}
-
-
-Search is2(const ll y, const IntStruct& s) {
-  const std::vector<ll>& a = s.a;
-  ll l = 0, r = a.size() - 1;
-  ll c1 = r/4;
-  ll c2 = c1+c1+c1;
-  ll yR = a[c1], yL = a[c2];
-  const unsigned lgScale = s.lgScale;
-  ll n = (c2-c1)*((y-yL) >> lgScale);
-  ll d = ((yR - yL) >> lgScale);
-  ll m = c1;
-  if (n >= d) {
-    ll scOff = dL.div(n,d);
-    m = m + scOff;
-    if (m < l) m = l;
-    if (m > r) m = r;
-    assert(m <= r);
-    assert(m >= l);
-    if (a[m] > y) {
-      do { m--; } while (a[m] > y);
-      return Search{(int)m};
-    }
-  }
-
-  while (a[m] < y) { m++; };
+  while (a[m] < y && m < r) m++;
   return Search{(int)m};
 }
 
@@ -373,7 +357,26 @@ Search isFull(const ll y, const IntStruct& s) {
 Search oracle(const ll y, OracleStruct& s) {
   int i = s.i[s.j++];
   s.j = s.j >= s.i.size() ? 0 : s.j;
-  return Search{i, 1};
+  return Search{i, 0}; //, 1
+}
+
+Search oracleLin(const ll y, OracleStruct& s) {
+  int i = s.i[s.j++];
+  s.j = s.j >= s.i.size() ? 0 : s.j;
+  while (s.a[i] < y) i++;
+  return Search{i, 0};
+}
+
+Search oracleLinRnd(const ll y, OracleStruct& s) {
+  int i = s.i[s.j++];
+  s.j = s.j >= s.i.size() ? 0 : s.j;
+  // look at range of salaries compared to range of search as a reduction factor
+  if (s.a[i] < y) {
+    do { i++; } while (s.a[i] < y);
+  } else {
+    while (s.a[i] > y) { i--; }
+  }
+  return Search{i, 0};
 }
 
 int main() {
@@ -424,27 +427,30 @@ int main() {
   }
 
   IntStruct isS(input);
-  IntStructT isTS(input);
   BinStruct bsS(input);
-  OracleStruct oS(input, searchIndex);
+  OracleStruct oS(input, searchIndex, 0);
+  // must seed first
+  OracleStruct oS5(input, searchIndex, 5, true);
 
 
   typedef TestStats TS;
   using BsFn = Search (*)(const ll, const BinStruct&);
-  using IsFn = Search (*)(const ll, const IntStruct&);
-  using IsFnT = Search (*)(const ll, const IntStructT&);
+  //using IsFn = Search (*)(const ll, const IntStruct&);
   using OsFn = Search (*)(const ll, OracleStruct&);
 
 
   //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
+//  std::vector<TS> tests = { TS{"is"}
   std::vector<TS> tests = {
-    TS{"bsPVKEq2"}, TS{"isOnce"}
-    ,TS{"bsPVKEq2"}, TS{"oracle"}
-    ,TS{"bsPVKEq2"}, TS{"isFull"}
+//    TS{"bsPVKEq2"}, TS{"isOnce"}
+     TS{"bsPVKEq2 "}, TS{"oracle   "}
+    ,TS{"bsPVKEq2 "}, TS{"oracleLin"}
 
-    ,TS{"bsPVKEq2"}, TS{"isFull"}
-    ,TS{"bsPVKEq2"}, TS{"oracle"}
-    ,TS{"bsPVKEq2"}, TS{"isOnce"}
+//    ,TS{"bsPVKEq2"}, TS{"isFull"}
+
+    //,TS{"bsPVKEq2"}, TS{"isFull"}
+    //,TS{"bsPVKEq2"}, TS{"oracle"}
+    //,TS{"bsPVKEq2"}, TS{"isOnce"}
   };
   //const int N_RUNS = 1 << 5;
 #ifndef NDEBUG
@@ -462,19 +468,20 @@ int main() {
     }
     int testIx = 0;
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    //RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
+    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStructT, IsFnT, isT >(searchVal, searchIndex, isTS, tests[testIx++]);
+    RunBenchmark<OracleStruct, OsFn, oracleLinRnd>(searchVal, searchIndex, oS, tests[testIx++]);
+    //RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
     //RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
 
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStructT, IsFnT, isT >(searchVal, searchIndex, isTS, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    //RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    //RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
+    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    //RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
     assert((size_t)testIx == tests.size());
   }
   fprintf(stderr, "\n");
