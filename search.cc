@@ -192,6 +192,21 @@ struct IntStruct {
   const std::vector<ll> a;
 };
 
+struct IntStructT {
+  IntStructT(const std::vector<ll>& _a) : array(_a) {
+    lgScale = lg(a.size() - 1);
+    a.push_back(_a[0] >> lgScale);
+    for (int i = 1; i < _a.size(); i++) {
+      a.push_back(_a[i] >> lgScale);
+      assert(_a[i] == _a[i-1] || (_a[i] >> lgScale) > (_a[i-1] >> lgScale));
+    }
+  }
+
+  unsigned lgScale;
+  std::vector<ll> a;
+  const std::vector<ll> array;
+};
+
 struct OracleStruct {
   OracleStruct(const std::vector<ll>& _a, const std::vector<int>& _i) : a(_a), i(_i), j(0) { }
 
@@ -256,14 +271,14 @@ Search is(const ll y, const IntStruct& s) {
   return Search{(int)m};
 }
 
-Search is2(const ll y, const IntStruct& s) {
+Search isT(const ll y, const IntStructT& s) {
   const std::vector<ll>& a = s.a;
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
   ll yR = a[r], yL = a[l];
-  const unsigned lgScale = s.lgScale;
-  ll n = (r-l)*((y-yL) >> lgScale);
-  ll d = ((yR - yL) >> lgScale);
+  ll yS = y >> s.lgScale;
+  ll n = (r-l)*(yS-yL);
+  ll d = yR - yL;
   ll m = l;
   if (n >= d) {
     ll scOff = dL.div(n,d);
@@ -275,14 +290,43 @@ Search is2(const ll y, const IntStruct& s) {
     assert(m >= l);
 
     assert(a[m] > a[l]); // we know this because n would've been less than d
-    if (a[m] > y) {
-      do { m--; } while (a[m] > y);
+    if (a[m] > yS) {
+      do { m--; } while (a[m] > yS);
       return Search{(int)m};
     }
   }
 
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
+  while (a[m] < yS && m < r) m++;
+  assert(s.array[m] == y);
+  return Search{(int)m};
+}
+
+
+Search is2(const ll y, const IntStruct& s) {
+  const std::vector<ll>& a = s.a;
+  ll l = 0, r = a.size() - 1;
+  ll c1 = r/4;
+  ll c2 = c1+c1+c1;
+  ll yR = a[c1], yL = a[c2];
+  const unsigned lgScale = s.lgScale;
+  ll n = (c2-c1)*((y-yL) >> lgScale);
+  ll d = ((yR - yL) >> lgScale);
+  ll m = c1;
+  if (n >= d) {
+    ll scOff = dL.div(n,d);
+    m = m + scOff;
+    if (m < l) m = l;
+    if (m > r) m = r;
+    assert(m <= r);
+    assert(m >= l);
+    if (a[m] > y) {
+      do { m--; } while (a[m] > y);
+      return Search{(int)m};
+    }
+  }
+
   while (a[m] < y) { m++; };
   return Search{(int)m};
 }
@@ -380,6 +424,7 @@ int main() {
   }
 
   IntStruct isS(input);
+  IntStructT isTS(input);
   BinStruct bsS(input);
   OracleStruct oS(input, searchIndex);
 
@@ -387,24 +432,25 @@ int main() {
   typedef TestStats TS;
   using BsFn = Search (*)(const ll, const BinStruct&);
   using IsFn = Search (*)(const ll, const IntStruct&);
+  using IsFnT = Search (*)(const ll, const IntStructT&);
   using OsFn = Search (*)(const ll, OracleStruct&);
 
 
   //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
   std::vector<TS> tests = {
-    TS{"bsPVKEq2"}, TS{"is"}
+    TS{"bsPVKEq2"}, TS{"isOnce"}
     ,TS{"bsPVKEq2"}, TS{"oracle"}
     ,TS{"bsPVKEq2"}, TS{"isFull"}
 
     ,TS{"bsPVKEq2"}, TS{"isFull"}
     ,TS{"bsPVKEq2"}, TS{"oracle"}
-    ,TS{"bsPVKEq2"}, TS{"is"}
+    ,TS{"bsPVKEq2"}, TS{"isOnce"}
   };
   //const int N_RUNS = 1 << 5;
 #ifndef NDEBUG
   const int N_RUNS = 1 << 1;
 #else
-  const int N_RUNS = 1 << 3;
+  const int N_RUNS = 1 << 13;
 #endif
   time_t lastTime = time(NULL);
 
@@ -420,10 +466,11 @@ int main() {
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<IntStructT, IsFnT, isT >(searchVal, searchIndex, isTS, tests[testIx++]);
+    //RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
 
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<IntStructT, IsFnT, isT >(searchVal, searchIndex, isTS, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
