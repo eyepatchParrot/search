@@ -451,4 +451,3 @@ Search isDeriv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   return Search{(int)l, steps};
 }
 
-

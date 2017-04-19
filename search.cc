@@ -16,7 +16,7 @@
 // but might allow us to take advantage of cache lines and pre-fetching
 
 // TODO remember that integer type matters. Parameterize?
-typedef unsigned long long ll;
+typedef int64_t ll;
 
 struct RunStats {
   int sumSteps1, sumSteps2;
@@ -78,12 +78,12 @@ unsigned lg_flr(unsigned x) {
   return 32 - __builtin_clz(x);
 }
 
-inline unsigned lgl(ll x) {
+inline unsigned lgl(uint64_t x) {
   assert(x >= 2); // subtracting and clz < 1 undefined
   return 64 - __builtin_clzll(x-1);
 }
 
-inline int lgl_flr(ll x) {
+inline int lgl_flr(uint64_t x) {
   assert(x >= 1); // clz < 1 undefined
   return 64 - __builtin_clzll(x);
 }
@@ -108,7 +108,7 @@ struct DivLut {
      */
     // skip zero since divide by zero makes no sense
     for (ll r = 1; r < L; r++) {
-      ll rN = (1ULL << 63) / r; // 1/r ~= rN / 2^63
+      uint64_t rN = (1ULL << 63) / r; // 1/r ~= rN / 2^63
       assert(rN > 0); // multiply by zero doesn't make sense.
 
       int lz = __builtin_clzll(rN);
@@ -116,7 +116,7 @@ struct DivLut {
       rNT[r] = rN >> (63 - lg_rDT[r]);
       assert(rNT[r] < W);
 #ifndef NDEBUG
-      printf("1/%llu ~ %llx / 2^%d\n", r, rNT[r], lg_rDT[r]);
+      printf("1/%ld ~ %lx / 2^%d\n", r, rNT[r], lg_rDT[r]);
       ll rQ = (0xFFFFFFFF * rNT[r]) >> lg_rDT[r];
       ll q = 0xFFFFFFFF / r;
       assert(rQ <= q);
@@ -178,26 +178,6 @@ struct BinStruct {
   const std::vector<ll> a;
 };
 
-class BinStructT {
-  public:
-  typedef uint32_t T;
-  static const int W = 8 * sizeof(T);
-
-  std::vector<uint32_t> index;
-  const std::vector<ll> array;
-
-  BinStructT(const std::vector<ll>& pA) : array(pA) {
-    index.push_back(pA[0] >> W);
-    for (unsigned i = 1; i < pA.size(); i++) {
-      assert(pA[i] == pA[i-1] || (T)(pA[i] >> W) > (unsigned)(pA[i-1] >> W));
-      uint32_t v = pA[i] >> W;
-      index.push_back(v);
-    }
-    assert(index.size() == pA.size());
-  }
-
-};
-
 struct IntStruct {
   IntStruct(const std::vector<ll>& _a) : a(_a) {
     lgScale = lg(a.size() - 1);
@@ -240,31 +220,79 @@ Search bsPVKEq2(const ll x, const BinStruct& s) {
   return Search{leftIndex};
 }
 
-Search bsPVKEqT(const ll lx, const BinStructT& s) {
-  (void)s;
-  typedef uint32_t T;
-  const std::vector<T>& array = s.index;
-  const int MIN_EQ_SZ = 2;
-  const uint32_t x = lx >> 32;
-  int leftIndex = 0;                                                               
-  int n = array.size();                                                            
-  int half;
-  if ((half = n) > MIN_EQ_SZ) {
-    do {
-        half /= 2;
-        n -= half;
-        leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
-    } while ((half = n) > MIN_EQ_SZ);
-  }                                                                                
-  if ((half = n) > 1) {
-    do {
-        half /= 2;
-        n = array[leftIndex + half] == x ? 0 : n - half;
-        leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
-    } while ((half = n) > 1);
-  }                                                                                
-  assert(s.array[leftIndex] == lx);  
-  return Search{leftIndex};
+Search is(const ll y, const IntStruct& s) {
+  const std::vector<ll>& a = s.a;
+  ll l = 0, r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
+  ll n = (r-l)*((y-yL) >> lgScale);
+  ll d = ((yR - yL) >> lgScale);
+  if (n >= d) {
+    ll scOff = dL.div(n,d);
+    ll m = l + scOff;
+#ifndef NDEBUG
+    printf(" %ld", m);
+#endif
+    assert(m <= r);
+    assert(m >= l);
+    if (y < a[m]) {
+      // over estimate
+      r = m - 1;
+      while (a[r] > y && l < r) r--;
+      return Search{(int)r};
+    } else if (y > a[m]) {
+      // under estimate
+      l = m + 1;
+    } else {
+      return Search{(int)m};
+    }
+    // TODO see if we can reduce this to an if statement and a conditional
+  }
+
+  // n < d implies that we should start from the left
+  while (a[l] < y && l < r) l++;
+  return Search{(int)l};
+}
+
+Search is3(const ll y, const IntStruct& s) {
+  const std::vector<ll>& a = s.a;
+  ll l = 0, r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
+  ll n = (r-l)*((y-yL) >> lgScale);
+  ll d = ((yR - yL) >> lgScale);
+  ll m = l;
+  if (n >= d) {
+    ll scOff = dL.div(n,d);
+    m = m + scOff;
+#ifndef NDEBUG
+    printf(" %ld", m);
+#endif
+    assert(m <= r);
+    assert(m >= l);
+
+    if (y < a[m]) {
+      // over estimate
+      r = m - 1;
+      while (a[r] > y && l < r) r--;
+      return Search{(int)r};
+    }
+    // l = m
+//    else if (y > a[m]) {
+//      // under estimate
+//      l = m + 1;
+//    } else {
+//      return Search{(int)m};
+//    }
+    // TODO see if we can reduce this to an if statement and a conditional
+  }
+
+  // n < d implies that we should start from the left
+  // we know that l = m because we didn't go into the only path ewhere that's not true
+  while (a[m] < y && m < r) m++;
+  return Search{(int)m};
 }
 
 Search is2(const ll y, const IntStruct& s) {
@@ -284,7 +312,7 @@ Search is2(const ll y, const IntStruct& s) {
     ll scOff = dL.div(n,d);
     ll m = l + scOff;
 #ifndef NDEBUG
-    printf(" %llu", m);
+    printf(" %ld", m);
 #endif
     assert(m <= r);
     assert(m >= l);
@@ -308,12 +336,7 @@ Search is2(const ll y, const IntStruct& s) {
 Search oracle(const ll y, OracleStruct& s) {
   int i = s.i[s.j++];
   s.j = s.j >= s.i.size() ? 0 : s.j;
-//  if (y == s.a[i]) {
-    return Search{i, 1};
-//  } else {
-//    assert(0);
-//    return Search{-1, 1};
-//  }
+  return Search{i, 1};
 }
 
 int main() {
@@ -331,7 +354,7 @@ int main() {
   // TESTS Div
 #ifndef NDEBUG
   if (dL.div(0xFFFULL, 2) != 0x7FFULL) {
-    printf("0xFFF / 2 != %llx\n", dL.div(0xFFFULL, 2));
+    printf("0xFFF / 2 != %lx\n", dL.div(0xFFFULL, 2));
     assert(dL.div(0xFFFULL, 2) == 0x7FFULL);
   }
 #endif
@@ -348,7 +371,7 @@ int main() {
     assert(nNums > 0);
     for (int i = 0; i < nNums; i++) {
       ll x;
-      loaded = 1 == scanf("%llu", &x);
+      loaded = 1 == scanf("%ld", &x);
       assert(loaded);
       input.push_back(x == 0 ? 1 : x); // temporary measure to keep from div by 0
       search.emplace_back(std::make_tuple(x, i));
@@ -365,26 +388,24 @@ int main() {
 
   IntStruct isS(input);
   BinStruct bsS(input);
-  BinStructT bsTS(input);
   OracleStruct oS(input, searchIndex);
 
 
   typedef TestStats TS;
   using BsFn = Search (*)(const ll, const BinStruct&);
-  using BsFn32 = Search (*)(const ll, const BinStructT&);
   using IsFn = Search (*)(const ll, const IntStruct&);
   using OsFn = Search (*)(const ll, OracleStruct&);
 
 
   //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
   std::vector<TS> tests = {
-    TS{"bsPVKEq2"}, TS{"is2"}
-//    ,TS{"bsPVKEq2"}, TS{"bsT"}
- //   TS{"bsPVKEq2"}, TS{"oracle"}
+    TS{"bsPVKEq2"}, TS{"is3"}
+    ,TS{"bsPVKEq2"}, TS{"is"}
+    ,TS{"bsPVKEq2"}, TS{"oracle"}
 
     ,TS{"bsPVKEq2"}, TS{"oracle"}
-//    ,TS{"bsPVKEq2"}, TS{"bsT"}
-//    ,TS{"bsPVKEq2"}, TS{"is2"}
+    ,TS{"bsPVKEq2"}, TS{"is"}
+    ,TS{"bsPVKEq2"}, TS{"is3"}
   };
   //const int N_RUNS = 1 << 5;
 #ifndef NDEBUG
@@ -402,18 +423,18 @@ int main() {
     }
     int testIx = 0;
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
-//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-//    RunBenchmark<BinStructT,  BsFn32, bsPVKEqT>(searchVal, searchIndex, bsTS, tests[testIx++]);
-//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-//    RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is3 >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
 
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
-//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-//    RunBenchmark<BinStructT,  BsFn32, bsPVKEqT>(searchVal, searchIndex, bsTS, tests[testIx++]);
-//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-//    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is3 >(searchVal, searchIndex, isS, tests[testIx++]);
     /*
      *
 bsPVKEq2,is2
@@ -523,7 +544,7 @@ bsPVKEq2,is2,bsPVKEq2,bsT,bsPVKEq2,oracle,bsPVKEq2,oracle,bsPVKEq2,bsT,bsPVKEq2,
     first = true;
     printf("\n");
     for (auto& ts : tests) {
-      printf("%s%llu", true != first ? "," : "", std::get<0>(ts.cyclesByIx[i]));
+      printf("%s%ld", true != first ? "," : "", std::get<0>(ts.cyclesByIx[i]));
       first = false;
     }
   }

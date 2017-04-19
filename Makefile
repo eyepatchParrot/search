@@ -1,5 +1,6 @@
-GC=g++
-OPT=-g2 -Wall -std=c++11 -fno-omit-frame-pointer -flto -ffast-math
+#GC=g++
+GC=~/llvm/bin/clang++
+OPT=-g2 -Wall -std=c++11 -fno-omit-frame-pointer -ffast-math
 PROFILE=$(GC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(GC) $(OPT)
 
