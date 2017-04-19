@@ -16,7 +16,7 @@
 // but might allow us to take advantage of cache lines and pre-fetching
 
 // TODO remember that integer type matters. Parameterize?
-typedef int64_t ll;
+typedef uint64_t ll;
 
 struct RunStats {
   int sumSteps1, sumSteps2;
@@ -46,7 +46,7 @@ void RunBenchmark( const std::vector<ll>& vals, const std::vector<int>& indexes,
   int sumSteps = 0;
   ll nIx = 0;
   ll st = __rdtsc();
-  for (ll i = 0; i < nNums; i++) {
+  for (int i = 0; i < nNums; i++) {
 #ifndef NDEBUG
     printf("\n%d", indexes[i]);
 #endif
@@ -55,7 +55,12 @@ void RunBenchmark( const std::vector<ll>& vals, const std::vector<int>& indexes,
     //bool eq = r.ix == indexes[i];
 //    sumSteps += r.steps1;
     //nEq += eq;
-    assert(r.ix == indexes[i]);
+#ifndef NDEBUG
+    if (r.ix != indexes[i]) {
+      printf("a[%d]=%ld <> %d\n", indexes[i], vals[i], r.ix);
+      assert(r.ix == indexes[i]);
+    }
+#endif
   }
   ll dt = __rdtscp(&A) - st;
   ts.runStats.push_back(RunStats{sumSteps});
@@ -228,34 +233,30 @@ Search is(const ll y, const IntStruct& s) {
   const unsigned lgScale = s.lgScale;
   ll n = (r-l)*((y-yL) >> lgScale);
   ll d = ((yR - yL) >> lgScale);
+  ll m = l;
   if (n >= d) {
     ll scOff = dL.div(n,d);
-    ll m = l + scOff;
+    m = m + scOff;
 #ifndef NDEBUG
     printf(" %ld", m);
 #endif
     assert(m <= r);
     assert(m >= l);
-    if (y < a[m]) {
-      // over estimate
-      r = m - 1;
-      while (a[r] > y && l < r) r--;
-      return Search{(int)r};
-    } else if (y > a[m]) {
-      // under estimate
-      l = m + 1;
-    } else {
+
+    assert(a[m] > a[l]); // we know this because n would've been less than d
+    if (a[m] > y) {
+      do { m--; } while (a[m] > y);
       return Search{(int)m};
     }
-    // TODO see if we can reduce this to an if statement and a conditional
   }
 
   // n < d implies that we should start from the left
-  while (a[l] < y && l < r) l++;
-  return Search{(int)l};
+  // we know that l = m because we didn't go into the only path ewhere that's not true
+  while (a[m] < y && m < r) m++;
+  return Search{(int)m};
 }
 
-Search is3(const ll y, const IntStruct& s) {
+Search is2(const ll y, const IntStruct& s) {
   const std::vector<ll>& a = s.a;
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
@@ -273,29 +274,20 @@ Search is3(const ll y, const IntStruct& s) {
     assert(m <= r);
     assert(m >= l);
 
-    if (y < a[m]) {
-      // over estimate
-      r = m - 1;
-      while (a[r] > y && l < r) r--;
-      return Search{(int)r};
+    assert(a[m] > a[l]); // we know this because n would've been less than d
+    if (a[m] > y) {
+      do { m--; } while (a[m] > y);
+      return Search{(int)m};
     }
-    // l = m
-//    else if (y > a[m]) {
-//      // under estimate
-//      l = m + 1;
-//    } else {
-//      return Search{(int)m};
-//    }
-    // TODO see if we can reduce this to an if statement and a conditional
   }
 
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
-  while (a[m] < y && m < r) m++;
+  while (a[m] < y) { m++; };
   return Search{(int)m};
 }
 
-Search is2(const ll y, const IntStruct& s) {
+Search isFull(const ll y, const IntStruct& s) {
   const std::vector<ll>& a = s.a;
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
@@ -332,6 +324,7 @@ Search is2(const ll y, const IntStruct& s) {
   while (a[l] < y && l < r) l++;
   return Search{(int)l};
 }
+
 
 Search oracle(const ll y, OracleStruct& s) {
   int i = s.i[s.j++];
@@ -399,19 +392,19 @@ int main() {
 
   //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
   std::vector<TS> tests = {
-    TS{"bsPVKEq2"}, TS{"is3"}
-    ,TS{"bsPVKEq2"}, TS{"is"}
+    TS{"bsPVKEq2"}, TS{"is"}
     ,TS{"bsPVKEq2"}, TS{"oracle"}
+    ,TS{"bsPVKEq2"}, TS{"isFull"}
 
+    ,TS{"bsPVKEq2"}, TS{"isFull"}
     ,TS{"bsPVKEq2"}, TS{"oracle"}
     ,TS{"bsPVKEq2"}, TS{"is"}
-    ,TS{"bsPVKEq2"}, TS{"is3"}
   };
   //const int N_RUNS = 1 << 5;
 #ifndef NDEBUG
   const int N_RUNS = 1 << 1;
 #else
-  const int N_RUNS = 1 << 13;
+  const int N_RUNS = 1 << 3;
 #endif
   time_t lastTime = time(NULL);
 
@@ -423,112 +416,18 @@ int main() {
     }
     int testIx = 0;
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is3 >(searchVal, searchIndex, isS, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
 
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is3 >(searchVal, searchIndex, isS, tests[testIx++]);
-    /*
-     *
-bsPVKEq2,is2
-64472,48707
-64486,48730
-64489,48745
-64489,48754
-64492,48771
-64497,48776
-64500,48779
-64501,48783
-64504,48783
-64506,48785
-
-
-bsPVKEq2,is2,bsT
-63764,61076,50571
-63805,61155,50586
-63811,61164,50589
-63820,61190,50601
-63823,61193,50601
-63825,61198,50607
-63826,61201,50607
-63828,61234,50609
-63828,61236,50610
-63828,61245,50610
-
-4426 
-bsPVKEq2,is2,bsPVKEq2,bsT,bsPVKEq2,bsT,bsPVKEq2,is2
-63732,59718,63724,64291,63765,64215,63706,60212
-63744,59837,63729,64294,63770,64227,63724,60224
-63750,59945,63756,64317,63773,64230,63729,60238
-63773,59962,63767,64326,63776,64239,63733,60305
-63788,59988,63776,64331,63784,64241,63741,60320
-63793,59997,63782,64332,63784,64242,63744,60369
-63794,60009,63794,64332,63785,64242,63764,60378
-63799,60012,63794,64335,63790,64244,63765,60384
-63802,60032,63802,64343,63793,64244,63767,60387
-63805,60035,63805,64346,63793,64245,63770,60390
-
-not using tuple
-5211 
-bsPVKEq2,is2,bsPVKEq2,bsT,bsPVKEq2,bsT,bsPVKEq2,is2
-64483,56512,64520,64989,64523,64931,64486,56768
-64527,56515,64541,65038,64547,64975,64547,56835
-64530,56561,64544,65044,64559,64977,64550,56846
-64532,56576,64544,65062,64573,64980,64558,56847
-64538,56643,64556,65065,64576,64980,64562,56896
-64544,56687,64556,65065,64579,64992,64567,56905
-64544,56701,64559,65076,64582,64992,64576,56934
-64544,56733,64564,65082,64582,64992,64576,56934
-64547,56739,64564,65088,64582,64992,64576,56943
-64550,56759,64567,65088,64584,64992,64582,56969
-
-292 5142 
-bsPVKEq2,is2,bsPVKEq2,bsT,bsPVKEq2,oracle,bsPVKEq2,oracle,bsPVKEq2,bsT,bsPVKEq2,is2
-58563,61347,58569,58752,58540,30630,58630,30595,58601,58760,58531,61905
-58581,61347,58572,58752,58542,30645,58633,30604,58607,58772,58537,61973
-58584,61359,58575,58766,58546,30653,58633,30606,58607,58778,58537,61993
-58586,61367,58578,58767,58549,30653,58635,30607,58610,58778,58537,62033
-58592,61370,58581,58772,58557,30653,58636,30607,58610,58778,58539,62056
-58592,61388,58583,58773,58557,30656,58636,30607,58613,58781,58539,62069
-58592,61391,58584,58781,58557,30656,58636,30610,58613,58781,58540,62080
-58592,61408,58586,58781,58560,30656,58639,30612,58615,58781,58540,62080
-58592,61422,58589,58781,58560,30656,58639,30613,58615,58781,58540,62086
-58595,61425,58589,58784,58560,30659,58642,30613,58618,58784,58540,62092
-
-1219 6072 
-bsPVKEq2,is2,bsPVKEq2,bsT,bsPVKEq2,oracle,bsPVKEq2,oracle,bsPVKEq2,bsT,bsPVKEq2,is2
-58575,61996,58589,58731,58531,30342,58534,30336,58525,58645,58534,62388
-58581,61998,58592,58732,58540,30345,58546,30342,58534,58665,58534,62397
-58583,62004,58592,58735,58540,30351,58549,30345,58534,58668,58537,62414
-58586,62005,58592,58740,58540,30354,58551,30345,58537,58670,58539,62417
-58592,62039,58592,58740,58540,30354,58551,30347,58540,58679,58540,62420
-58592,62045,58595,58741,58540,30354,58554,30348,58540,58685,58540,62421
-58595,62051,58595,58749,58540,30356,58557,30348,58546,58685,58542,62426
-58595,62051,58595,58749,58543,30357,58560,30348,58548,58685,58543,62426
-58595,62065,58595,58749,58543,30357,58560,30350,58552,58688,58543,62444
-58598,62071,58595,58749,58543,30357,58560,30351,58554,58688,58545,62461
-
-
-89 5075 
-bsPVKEq2,is2,bsPVKEq2,bsT,bsPVKEq2,oracle,bsPVKEq2,oracle,bsPVKEq2,bsT,bsPVKEq2,is2
-58574,52873,58574,58723,58539,30357,58531,30350,58531,58659,58519,53309
-58575,52884,58580,58732,58545,30360,58531,30351,58531,58662,58531,53315
-58577,52916,58583,58737,58545,30362,58534,30351,58534,58668,58531,53318
-58577,52922,58586,58741,58546,30362,58546,30353,58534,58676,58543,53324
-58578,52922,58589,58743,58549,30362,58548,30353,58537,58679,58543,53327
-58583,52925,58589,58743,58551,30362,58549,30359,58540,58679,58546,53332
-58586,52948,58592,58746,58552,30365,58551,30359,58545,58679,58546,53344
-58586,52957,58592,58746,58554,30365,58551,30360,58546,58682,58546,53344
-58586,53000,58592,58749,58554,30365,58551,30360,58546,58685,58546,53350
-58586,53006,58592,58749,58554,30365,58551,30362,58546,58685,58546,53353
-*/
     assert((size_t)testIx == tests.size());
   }
   fprintf(stderr, "\n");
