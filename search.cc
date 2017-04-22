@@ -313,25 +313,20 @@ struct OracleStruct {
 };
 
 Search bsPVKEq2(const ll x, const BinStruct& s) {
-  (void)s;
   const std::vector<ll>& array = s.a;
   const int MIN_EQ_SZ = 2;
   int leftIndex = 0;                                                               
   int n = array.size();                                                            
   int half;
-  if ((half = n) > MIN_EQ_SZ) {
-    do {
-        half /= 2;
-        n -= half;
-        leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
-    } while ((half = n) > MIN_EQ_SZ);
-  }                                                                                
-  if ((half = n) > 1) {
-    do {
-        half /= 2;
-        n = array[leftIndex + half] == x ? 0 : n - half;
-        leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
-    } while ((half = n) > 1);
+  while ((half = n) > MIN_EQ_SZ) {
+    half /= 2;
+    n -= half;
+    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+  }
+  while ((half = n) > 1) {
+    half /= 2;
+    n = array[leftIndex + half] == x ? 0 : n - half;
+    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
   }                                                                                
   assert(array[leftIndex] == x);  
   return Search{leftIndex};
@@ -373,10 +368,7 @@ Search is2(const ll y, const IntStruct& s) {
   const unsigned lgScale = s.lgScale;
   ll n = (r-l)*((y-yL) >> lgScale);
   ll d = ((yR - yL) >> lgScale);
-  ll m = l + dL.div2(n,d);
-#ifndef NDEBUG
-  printf(" %ld", m);
-#endif
+  ll m = l + dL.div(n,d);
   assert(m <= r);
   assert(m >= l);
   assert(a[m] >= a[l]); // we know this because n would've been less than d
@@ -464,17 +456,18 @@ int main() {
   //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
 //  std::vector<TS> tests = { TS{"is"}
   std::vector<TS> tests = {
-      TS{"bs   "}, TS{"is   "}
-     ,TS{"bs   "}, TS{"is2  "}
-
-     ,TS{"bs   "}, TS{"is2  "}
-     ,TS{"bs   "}, TS{"is   "}
+       TS{"bs   "}, TS{"is   "}
+      ,TS{"bs2   "}, TS{"is   "}
+//     ,TS{"bs   "}, TS{"is2  "}
+//
+//     ,TS{"bs   "}, TS{"is2  "}
+//     ,TS{"bs   "}, TS{"is   "}
   };
   //const int N_RUNS = 1 << 5;
 #ifndef NDEBUG
   const int N_RUNS = 1 << 1;
 #else
-  const int N_RUNS = 1 << 13;
+  const int N_RUNS = 1 << 16;
 #endif
   time_t lastTime = time(NULL);
 
@@ -487,13 +480,15 @@ int main() {
     int testIx = 0;
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
-
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bs>(searchVal, searchIndex, bsS, tests[testIx++]);
     RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+//    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+
+//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+//    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+//    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
 
     assert((size_t)testIx == tests.size());
   }

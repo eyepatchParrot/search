@@ -508,4 +508,30 @@ Search isFull(const ll y, const IntStruct& s) {
   return Search{(int)l};
 }
 
+Search bsUnroll(const ll x, const BinStruct& s) {
+  const int MIN_EQ_SZ_LG = 9;
+  const std::vector<ll>& array = s.a;
+  int leftIndex = 0;                                                               
+  int n = array.size();                                                            
+  int half;
+  if ((half = n) > (1 << MIN_EQ_SZ_LG)) {
+    for (int i = 0; i < MIN_EQ_SZ_LG; i++) {
+      half /= 2;
+      n -= half;
+      leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+    }
+  }
+  while ((half = n) > 2) {
+    half /= 2;
+    n -= half;
+    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+  }
+  while ((half = n) > 1) {
+    half /= 2;
+    n = array[leftIndex + half] == x ? 0 : n - half;
+    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+  }
+  assert(array[leftIndex] == x);  
+  return Search{leftIndex};
+}
 
