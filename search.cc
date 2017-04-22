@@ -131,51 +131,130 @@ struct DivLut {
   ll rNT[L];
   int lg_rDT[L]; // 2^8 * lg(rD)
   
+  // approximate division
   ll div(const ll n, const ll d) const {
-//    assert(n >= d);
-//    if (n < d) return 0; // can't handle shifts > 63
-    // approximate divisor
-    ll rN;
-    int totalShift;
-    one_d(d, rN, totalShift);
-
-    // calculate quotient
-    ll q = quot(n, rN, totalShift);
-    return q;
-  }
-
-  void one_d(const ll d, ll &p, int &lg_q) const {
+    ll p;
+    int lg_q;
     if (d >= L) {
-      // is scaling needed
-      const int LG_D = lgl_flr(d);
-      const int k = LG_D - LG_L;
-      const ll r = 1 + ((d-1) >> k);
-      p = rNT[r];
-      lg_q = lg_rDT[r] + k;
+      one_dScale(d, p, lg_q);
     } else {
-      // do lookup directly
-      p = rNT[d];
-      lg_q = lg_rDT[d];
+      one_dBase(d, p, lg_q);
+    }
+    
+    if (n <= OVERFLOW_CHK) {
+      return quotFit(n, p, lg_q);
+    } else {
+      return quotOverflow(n, p, lg_q);
     }
   }
 
-  static inline ll quot(const ll n, const ll rN, const int lg_d) {
-    if (n <= OVERFLOW_CHK) {
-      ll q = n;
-      q *= rN;
-      q >>= lg_d;
-      return q;
+  ll div2(const ll n, const ll d) const {
+    ll p;
+    int lg_q;
+    if (d >= L) {
+      one_dScale(d, p, lg_q);
     } else {
-      ll q = n;
-      q >>= LG_W;
-      q *= rN;
-      q >>= (lg_d - LG_W);
-      return q;
+      one_dBase(d, p, lg_q);
+    }
+    
+    if (n <= OVERFLOW_CHK) {
+      if (lg_q > 63) return 0;
+      return (p*n) >> lg_q;
+//      return times(p,n) >> lg_q;
+    } else {
+      return (p*(n >> LG_W)) >> (lg_q - LG_W);
+//      return times(p,n >> LG_W) >> (lg_q - LG_W);
     }
   }
+
+  ll times(ll a, ll b) const {
+    switch (a) {
+      case 1: return b;
+      case 2: return 2 *b;
+      case 3: return 3 *b;
+      case 4: return 4 *b;
+      case 5: return 5 *b;
+      case 6: return 6 *b;
+      case 7: return 7 *b;
+      case 8: return 8 *b;
+      case 9: return 9 *b;
+      case 10: return 10 *b;
+      case 11: return 11 *b;
+      case 12: return 12 *b;
+      case 13: return 13 *b;
+      case 14: return 14 *b;
+      case 15: return 15 *b;
+      case 16: return 16 *b;
+      default: return b;
+    }
+  }
+
+//  ll div2(ll n, ll d) const {
+//    // TODO play around with initialization
+//    int lg_q = n <= OVERFLOW_CHK ? 0 : -LG_W;
+//    if (d >= L) {
+//      const int k = lgl_flr(d) - LG_L;
+//      d = 1 + ((d-1) >> k);
+//      lg_q += k;
+//    }
+//    // TODO try always doing this
+//    if (n > OVERFLOW_CHK) {
+//      n >>= LG_W;
+////      lg_q -= LG_W;
+//    }
+//    // TODO replace if with shift
+//    lg_q += lg_rDT[d];
+//    const ll p = rNT[d];
+//    return (n * p) >> lg_q;
+//  }
+//
+//
+//    if (d >= L) {
+//      const int k = lgl_flr(d);
+//      d = 1 + ((d-1) >> k);
+//      lg_q = lg_rDT[d] + k;
+//    } else {
+//      lg_q = lg_rDT[d];
+//    }
+//    // skipped the p step because I wanted d instead
+//    const ll p = rNT[d];
+//    if (n <= OVERFLOW_CHK) {
+//      return quotFit(n, p, lg_q);
+//    } else {
+//      return quotOverflow(n, p, lg_q);
+//    }
+//  }
+
+  void one_dScale(const ll d, ll &p, int &lg_q) const {
+    const int LG_D = lgl_flr(d);
+    const int k = LG_D - LG_L;
+    const ll r = 1 + ((d-1) >> k);
+    p = rNT[r];
+    lg_q = lg_rDT[r] + k;
+  }
+
+  void one_dBase(const ll d, ll &p, int &lg_q) const {
+    p = rNT[d];
+    lg_q = lg_rDT[d];
+  }
+
+  static inline ll quotFit(const ll n, const ll p, const int lg_q) {
+    if (lg_q > 63) return 0;
+    return (n * p) >> lg_q;
+  }
+
+  static inline ll quotOverflow(const ll n, const ll p, const int lg_q) {
+    return ((n >> LG_W) * p) >> (lg_q - LG_W);
+  }
+
+  static inline ll quot(const ll n, const ll p, const int lg_q) {
+    const ll lg_w = n <= OVERFLOW_CHK ? 0 : LG_W;
+    return lg_q > 63 ? 0 : ((n >> lg_w) * p) >> (lg_q - lg_w);
+  }
+
 };
 
-DivLut<22, 8> dL;
+DivLut<4, 8> dL;
 
 struct BinStruct {
   BinStruct(const std::vector<ll>& _a) : a(_a) {  }
@@ -266,26 +345,23 @@ Search is(const ll y, const IntStruct& s) {
   const unsigned lgScale = s.lgScale;
   ll n = (r-l)*((y-yL) >> lgScale);
   ll d = ((yR - yL) >> lgScale);
-  ll m = l;
-  if (n >= d) {
-    ll scOff = dL.div(n,d);
-    m = m + scOff;
+  ll m = l + dL.div(n,d);
 #ifndef NDEBUG
-    printf(" %ld", m);
+  printf(" %ld", m);
 #endif
-    assert(m <= r);
-    assert(m >= l);
-
-    assert(a[m] > a[l]); // we know this because n would've been less than d
-    if (a[m] > y) {
-      do { m--; } while (a[m] > y);
-      return Search{(int)m};
-    }
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]); // we know this because n would've been less than d
+  if (a[m] > y) {
+    do { m--; } while (a[m] > y);
+    return Search{(int)m};
   }
 
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
-  while (a[m] < y && m < r) m++;
+  // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
+  if (y >= yR) return Search{(int)r};
+  while (a[m] < y) m++;
   return Search{(int)m};
 }
 
@@ -297,13 +373,13 @@ Search is2(const ll y, const IntStruct& s) {
   const unsigned lgScale = s.lgScale;
   ll n = (r-l)*((y-yL) >> lgScale);
   ll d = ((yR - yL) >> lgScale);
-  ll m = l;
-  ll scOff = dL.div(n,d);
-  m = m + scOff + 1;
+  ll m = l + dL.div2(n,d);
+#ifndef NDEBUG
+  printf(" %ld", m);
+#endif
   assert(m <= r);
   assert(m >= l);
-
-  assert(a[m] > a[l]); // we know this because n would've been less than d
+  assert(a[m] >= a[l]); // we know this because n would've been less than d
   if (a[m] > y) {
     do { m--; } while (a[m] > y);
     return Search{(int)m};
@@ -311,72 +387,16 @@ Search is2(const ll y, const IntStruct& s) {
 
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
-  while (a[m] < y && m < r) m++;
+  // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
+  if (y >= yR) return Search{(int)r};
+  while (a[m] < y) m++;
   return Search{(int)m};
 }
-
-Search isFull(const ll y, const IntStruct& s) {
-  const std::vector<ll>& a = s.a;
-  ll l = 0, r = a.size() - 1;
-  assert(r - l >= 0); // assume non-empty vector
-  ll yR = a[r], yL = a[l];
-  const unsigned lgScale = s.lgScale;
-  //int steps = 0;
-  while (r - l > 0) {
-    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
-    ll n = (r-l)*((y-yL) >> lgScale);
-    ll d = ((yR - yL) >> lgScale);
-    if (n < d) break; // if n < d, n / d == 0, so no progress made
-
-    //steps++;
-    ll scOff = dL.div(n,d);
-    ll m = l + scOff;
-#ifndef NDEBUG
-    printf(" %ld", m);
-#endif
-    assert(m <= r);
-    assert(m >= l);
-    if (y < a[m]) {
-      // over estimate
-      r = m - 1;
-      yR = a[r];
-    } else if (y > a[m]) {
-      // under estimate
-      l = m + 1;
-      yL = a[l];
-    } else {
-      return Search{(int)m};
-    }
-  }
-
-  while (a[l] < y && l < r) l++;
-  return Search{(int)l};
-}
-
 
 Search oracle(const ll y, OracleStruct& s) {
   int i = s.i[s.j++];
   s.j = s.j >= s.i.size() ? 0 : s.j;
   return Search{i, 0}; //, 1
-}
-
-Search oracleLin(const ll y, OracleStruct& s) {
-  int i = s.i[s.j++];
-  s.j = s.j >= s.i.size() ? 0 : s.j;
-  while (s.a[i] < y) i++;
-  return Search{i, 0};
-}
-
-Search oracleLinRnd(const ll y, OracleStruct& s) {
-  int i = s.i[s.j++];
-  s.j = s.j >= s.i.size() ? 0 : s.j;
-  // look at range of salaries compared to range of search as a reduction factor
-  if (s.a[i] < y) {
-    do { i++; } while (s.a[i] < y);
-  } else {
-    while (s.a[i] > y) { i--; }
-  }
-  return Search{i, 0};
 }
 
 int main() {
@@ -403,6 +423,8 @@ int main() {
   std::vector<ll> input, searchVal;
   std::vector<int> searchIndex;
 
+  std::vector<ll> n, p;
+
   {
     std::vector<std::tuple<ll, int> > search;
 
@@ -414,7 +436,7 @@ int main() {
       loaded = 1 == scanf("%ld", &x);
       assert(loaded);
       input.push_back(x == 0 ? 1 : x); // temporary measure to keep from div by 0
-      search.emplace_back(std::make_tuple(x, i));
+      search.emplace_back(x, i);
     }
     std::srand(10);
     std::random_shuffle(search.begin(), search.end());
@@ -435,22 +457,18 @@ int main() {
 
   typedef TestStats TS;
   using BsFn = Search (*)(const ll, const BinStruct&);
-  //using IsFn = Search (*)(const ll, const IntStruct&);
-  using OsFn = Search (*)(const ll, OracleStruct&);
+  using IsFn = Search (*)(const ll, const IntStruct&);
+  //using OsFn = Search (*)(const ll, OracleStruct&);
 
 
   //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
 //  std::vector<TS> tests = { TS{"is"}
   std::vector<TS> tests = {
-//    TS{"bsPVKEq2"}, TS{"isOnce"}
-     TS{"bsPVKEq2 "}, TS{"oracle   "}
-    ,TS{"bsPVKEq2 "}, TS{"oracleLin"}
+      TS{"bs   "}, TS{"is   "}
+     ,TS{"bs   "}, TS{"is2  "}
 
-//    ,TS{"bsPVKEq2"}, TS{"isFull"}
-
-    //,TS{"bsPVKEq2"}, TS{"isFull"}
-    //,TS{"bsPVKEq2"}, TS{"oracle"}
-    //,TS{"bsPVKEq2"}, TS{"isOnce"}
+     ,TS{"bs   "}, TS{"is2  "}
+     ,TS{"bs   "}, TS{"is   "}
   };
   //const int N_RUNS = 1 << 5;
 #ifndef NDEBUG
@@ -468,20 +486,15 @@ int main() {
     }
     int testIx = 0;
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    //RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
-    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
     RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<OracleStruct, OsFn, oracleLinRnd>(searchVal, searchIndex, oS, tests[testIx++]);
-    //RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
-    //RunBenchmark<IntStruct, IsFn, isFull >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
 
-    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    //RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
-    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    //RunBenchmark<OracleStruct, OsFn, oracle>(searchVal, searchIndex, oS, tests[testIx++]);
-    //RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-    //RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+
     assert((size_t)testIx == tests.size());
   }
   fprintf(stderr, "\n");

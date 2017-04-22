@@ -451,3 +451,61 @@ Search isDeriv(const ll y, const std::vector<ll>& a, IntStruct& s) {
   return Search{(int)l, steps};
 }
 
+Search oracleLin(const ll y, OracleStruct& s) {
+  int i = s.i[s.j++];
+  s.j = s.j >= s.i.size() ? 0 : s.j;
+  while (s.a[i] < y) i++;
+  return Search{i, 0};
+}
+
+Search oracleLinRnd(const ll y, OracleStruct& s) {
+  int i = s.i[s.j++];
+  s.j = s.j >= s.i.size() ? 0 : s.j;
+  // look at range of salaries compared to range of search as a reduction factor
+  if (s.a[i] < y) {
+    do { i++; } while (s.a[i] < y);
+  } else {
+    while (s.a[i] > y) { i--; }
+  }
+  return Search{i, 0};
+}
+
+Search isFull(const ll y, const IntStruct& s) {
+  const std::vector<ll>& a = s.a;
+  ll l = 0, r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
+  //int steps = 0;
+  while (r - l > 0) {
+    assert(yR - yL > (1ULL << lgScale) && (y == yL || y - yL > (1ULL << lgScale)));
+    ll n = (r-l)*((y-yL) >> lgScale);
+    ll d = ((yR - yL) >> lgScale);
+    if (n < d) break; // if n < d, n / d == 0, so no progress made
+
+    //steps++;
+    ll scOff = dL.div(n,d);
+    ll m = l + scOff;
+#ifndef NDEBUG
+    printf(" %ld", m);
+#endif
+    assert(m <= r);
+    assert(m >= l);
+    if (y < a[m]) {
+      // over estimate
+      r = m - 1;
+      yR = a[r];
+    } else if (y > a[m]) {
+      // under estimate
+      l = m + 1;
+      yL = a[l];
+    } else {
+      return Search{(int)m};
+    }
+  }
+
+  while (a[l] < y && l < r) l++;
+  return Search{(int)l};
+}
+
+
