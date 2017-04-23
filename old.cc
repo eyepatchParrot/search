@@ -535,3 +535,54 @@ Search bsUnroll(const ll x, const BinStruct& s) {
   return Search{leftIndex};
 }
 
+Search isSIMD(const ll y, const IntStruct& s) {
+  const std::vector<ll>& a = s.a;
+  ll l = 0, r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
+  ll n = (r-l)*((y-yL) >> lgScale);
+  ll d = ((yR - yL) >> lgScale);
+  ll m = l + dL.div(n,d);
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]); // we know this because n would've been less than d
+  if (a[m] > y) {
+    do { m--; } while (a[m] > y);
+    return Search{(int)m};
+  }
+
+  // n < d implies that we should start from the left
+  // we know that l = m because we didn't go into the only path ewhere that's not true
+  // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
+  typedef uint64_t v4u __attribute__ ((vector_size (32)));
+//  int i = 0;
+  while (m+8 < r) {
+//    if (++i > 0) printf("\n*** %d ***\n", i);
+    const ll* v = a.data() + m;
+    // Compare a vector of the data with a vector of the searched for element
+    // Gather together the results of each comparison into one byte per element
+    // is mask ever not true?
+    int mask1 = 
+          _mm256_movemask_epi8(
+            _mm256_cmpgt_epi64((v4u){y,y,y,y}, (v4u){v[0], v[1], v[2], v[3]}));
+    //uint64_t mask2 = (uint64_t)
+    //      _mm256_movemask_epi8(
+    //        _mm256_cmpgt_epi64((v4u){y,y,y,y}, (v4u){v[4], v[5], v[6], v[7]})) << 32;
+    //uint64_t mask3 = ~(mask2 | mask1);
+ //   bool a = ~mask;
+ //   bool b = !mask;
+ //   assert(a==b);
+//    printf("\n%x\n", mask);
+//    mask = ~mask;
+    int mask3 = mask1;
+    if (mask3) return Search{(int)(m) + (__builtin_ctz(mask3) / 8)};
+    m += 8;
+  }
+  if (y >= yR) return Search{(int)r};
+  while (a[m] < y) m++;
+
+  return Search{(int)m};
+}
+
+

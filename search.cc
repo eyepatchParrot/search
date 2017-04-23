@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <vector>
 #include <x86intrin.h>
+#include <immintrin.h>
 #include <algorithm>
 #include <time.h>
 
@@ -100,161 +101,166 @@ inline ll sub_sat_u64(ll x, ll y) {
   return res;
 }
 
-// http://stackoverflow.com/questions/19016099/lookup-table-with-constexpr
-template <int LG_W, int LG_L>
+template <int LG_N>
 struct DivLut {
-  const static ll W = 1ULL << LG_W;
-  const static ll L = 1 + (1ULL << LG_L);
-  const static ll OVERFLOW_CHK = 1ULL << (64 - LG_W);
+  typedef __uint128_t DT; // double T
+  typedef uint64_t T;
 
-  DivLut() : rNT(), lg_rDT() {
-    /*
-     * 1/d ~= 1 / r / 2^k ~= rN / rD / 2^k
-     */
-    // skip zero since divide by zero makes no sense
-    for (ll r = 1; r < L; r++) {
-      uint64_t rN = (1ULL << 63) / r; // 1/r ~= rN / 2^63
-      assert(rN > 0); // multiply by zero doesn't make sense.
+  const static int N = 1 << LG_N;
+  DivLut() {
+    memset(pT, 0, sizeof(pT[0]) * N);
+    memset(lg_qT, 0, sizeof(lg_qT[0]) * N);
 
-      int lz = __builtin_clzll(rN);
-      lg_rDT[r] = lz + LG_W-1;
-      rNT[r] = rN >> (63 - lg_rDT[r]);
-      assert(rNT[r] < W);
-#ifndef NDEBUG
-      printf("1/%ld ~ %lx / 2^%d\n", r, rNT[r], lg_rDT[r]);
-      ll rQ = (0xFFFFFFFF * rNT[r]) >> lg_rDT[r];
-      ll q = 0xFFFFFFFF / r;
-      assert(rQ <= q);
-#endif
+    // I've moved everything back by one to accomodate common case
+
+    // multiplying by one is approximated by (2^64 - 1) / 2^64
+    pT[1-1] = ~(T)0;
+    lg_qT[1-1] = 0;
+
+    // do powers of 2
+    // start at zero since we multiply by 2^64 / 2
+    for (int i = 2, j = 0; i <= N; i*=2, j++) {
+      pT[-1+i] = (T)1 << 63;
+      lg_qT[-1+i] = j;
+    }
+
+    // generate fast multiply results
+    for (int i = 1; i <= N; i++) {
+      int d = i;
+      int lg_q = 0;
+      // reduce to an odd number
+      while (pT[-1+d] == 0 && d % 2 == 0) {
+        d /= 2;
+        lg_q++;
+      }
+      if (pT[-1+d] != 0) {
+        pT[-1+i] = pT[-1+d];
+        lg_qT[-1+i] = lg_qT[-1+d] + lg_q;
+        continue;
+      }
+
+      // find a 2^n + 1 multiple
+      int j = 64;
+      for (; j < 64+lgl(d); j++) {
+        DT x = ((DT)1 << j) + 1;
+        int r = x % d;
+        if (r == 0) {
+          pT[-1+i] = (((DT)1 << j) + d) / d;
+          lg_qT[-1+i] = lg_q + (j - 64);
+          break;
+        }
+      }
+      if (pT[-1+i] == 0) {
+        pT[-1+i] = (((T)1 << 63) / d) << 1;
+        // guaranteed i > 1, so we will always have room to shift left
+        // we always divide by 2^64, so we have to make sure that's happening
+        lg_qT[-1+i] = lg_q;
+      }
     }
   }
-  ll rNT[L];
-  int lg_rDT[L]; // 2^8 * lg(rD)
-  
-  // approximate division
-  ll div(const ll n, const ll d) const {
-    ll p;
-    int lg_q;
-    if (d >= L) {
-      one_dScale(d, p, lg_q);
+
+  T div(T n, T d) {
+    d--; // start the d-1 early
+    if (d > N-1) {
+      // note that this becomes ceiling log
+      const int k = lgl_flr(d) - LG_N;
+      const T p = d >> k; // +1 for math, -1 for offset
+      return divFit(n, p, k + lg_qT[p]);
     } else {
-      one_dBase(d, p, lg_q);
+      return divFit(n, d+(-1+1), lg_qT[d+(-1+1)]);
     }
-    
-    if (n <= OVERFLOW_CHK) {
-      return quotFit(n, p, lg_q);
+  }
+
+  T divFit(T n, T p, int lg_q) {
+    assert(p <= N);
+    // assuming that we're in the range
+    T hi = ((DT)n * pT[p]) >> 64;
+    return hi >> lg_q;
+  }
+
+  T pT[N];
+  int lg_qT[N];
+};
+template <int LG_N>
+struct DivLut3 {
+  typedef __uint128_t DT; // double T
+  typedef uint64_t T;
+
+  const static int N = 1 << LG_N;
+  DivLut3() {
+    memset(pT, 0, sizeof(pT[0]) * N);
+
+    // counting on lg_q being small enough that we can shift right
+
+    // I've moved everything back by one to accomodate common case
+
+    // multiplying by one is approximated by (2^64 - 1) / 2^64
+    pT[1-1] = ~(T)0;
+
+    // do powers of 2
+    // start at zero since we multiply by 2^64 / 2
+    for (int i = 2, lg_q = 0; i <= N; i*=2, lg_q++) {
+      T p = (T)1 << 63;
+      p = p >> lg_q;
+      pT[-1+i] = p;
+    }
+
+    // generate fast multiply results
+    for (int i = 1; i <= N; i++) {
+      int d = i;
+      int lg_q = 0;
+      // reduce to an odd number
+      while (pT[-1+d] == 0 && d % 2 == 0) {
+        d /= 2;
+        lg_q++;
+      }
+      if (pT[-1+d] != 0) {
+        if (i == d) continue;
+        pT[-1+i] = pT[-1+d] >> lg_q;
+        continue;
+      }
+
+      // find a 2^n + 1 multiple
+      int j = 64;
+      for (; j < 64+lgl(d); j++) {
+        DT x = ((DT)1 << j) + 1;
+        int r = x % d;
+        if (r == 0) {
+          lg_q = lg_q + (j-64);
+          pT[-1+i] = ((((DT)1 << j) + d) / d) >> lg_q;
+          break;
+        }
+      }
+      if (pT[-1+i] == 0) {
+        pT[-1+i] = ((((T)1 << 63) / d) << 1) >> lg_q;
+      }
+    }
+  }
+
+  T div(T n, T d) {
+    d--; // start the d-1 early
+    if (d > N-1) {
+      // note that this becomes ceiling log
+      const int k = lgl_flr(d) - LG_N;
+      const T p = d >> k; // +1 for math, -1 for offset
+      return divFit(n, p) >> k;
     } else {
-      return quotOverflow(n, p, lg_q);
+      // -1 for index adjustment + 1 for early adjustment
+      return divFit(n, d); 
     }
   }
 
-  ll div2(const ll n, const ll d) const {
-    ll p;
-    int lg_q;
-    if (d >= L) {
-      one_dScale(d, p, lg_q);
-    } else {
-      one_dBase(d, p, lg_q);
-    }
-    
-    if (n <= OVERFLOW_CHK) {
-      if (lg_q > 63) return 0;
-      return (p*n) >> lg_q;
-//      return times(p,n) >> lg_q;
-    } else {
-      return (p*(n >> LG_W)) >> (lg_q - LG_W);
-//      return times(p,n >> LG_W) >> (lg_q - LG_W);
-    }
+  T divFit(T n, T p) {
+    assert(p <= N);
+    // assuming that we're in the range
+    return ((DT)n * pT[p]) >> 64;
   }
 
-  ll times(ll a, ll b) const {
-    switch (a) {
-      case 1: return b;
-      case 2: return 2 *b;
-      case 3: return 3 *b;
-      case 4: return 4 *b;
-      case 5: return 5 *b;
-      case 6: return 6 *b;
-      case 7: return 7 *b;
-      case 8: return 8 *b;
-      case 9: return 9 *b;
-      case 10: return 10 *b;
-      case 11: return 11 *b;
-      case 12: return 12 *b;
-      case 13: return 13 *b;
-      case 14: return 14 *b;
-      case 15: return 15 *b;
-      case 16: return 16 *b;
-      default: return b;
-    }
-  }
-
-//  ll div2(ll n, ll d) const {
-//    // TODO play around with initialization
-//    int lg_q = n <= OVERFLOW_CHK ? 0 : -LG_W;
-//    if (d >= L) {
-//      const int k = lgl_flr(d) - LG_L;
-//      d = 1 + ((d-1) >> k);
-//      lg_q += k;
-//    }
-//    // TODO try always doing this
-//    if (n > OVERFLOW_CHK) {
-//      n >>= LG_W;
-////      lg_q -= LG_W;
-//    }
-//    // TODO replace if with shift
-//    lg_q += lg_rDT[d];
-//    const ll p = rNT[d];
-//    return (n * p) >> lg_q;
-//  }
-//
-//
-//    if (d >= L) {
-//      const int k = lgl_flr(d);
-//      d = 1 + ((d-1) >> k);
-//      lg_q = lg_rDT[d] + k;
-//    } else {
-//      lg_q = lg_rDT[d];
-//    }
-//    // skipped the p step because I wanted d instead
-//    const ll p = rNT[d];
-//    if (n <= OVERFLOW_CHK) {
-//      return quotFit(n, p, lg_q);
-//    } else {
-//      return quotOverflow(n, p, lg_q);
-//    }
-//  }
-
-  void one_dScale(const ll d, ll &p, int &lg_q) const {
-    const int LG_D = lgl_flr(d);
-    const int k = LG_D - LG_L;
-    const ll r = 1 + ((d-1) >> k);
-    p = rNT[r];
-    lg_q = lg_rDT[r] + k;
-  }
-
-  void one_dBase(const ll d, ll &p, int &lg_q) const {
-    p = rNT[d];
-    lg_q = lg_rDT[d];
-  }
-
-  static inline ll quotFit(const ll n, const ll p, const int lg_q) {
-    if (lg_q > 63) return 0;
-    return (n * p) >> lg_q;
-  }
-
-  static inline ll quotOverflow(const ll n, const ll p, const int lg_q) {
-    return ((n >> LG_W) * p) >> (lg_q - LG_W);
-  }
-
-  static inline ll quot(const ll n, const ll p, const int lg_q) {
-    const ll lg_w = n <= OVERFLOW_CHK ? 0 : LG_W;
-    return lg_q > 63 ? 0 : ((n >> lg_w) * p) >> (lg_q - lg_w);
-  }
-
+  T pT[N];
 };
 
-DivLut<4, 8> dL;
+DivLut<8> dL;
+DivLut3<8> dL2;
 
 struct BinStruct {
   BinStruct(const std::vector<ll>& _a) : a(_a) {  }
@@ -265,9 +271,22 @@ struct BinStruct {
 struct IntStruct {
   IntStruct(const std::vector<ll>& _a) : a(_a) {
     lgScale = lg(a.size() - 1);
+    ll tR = a.size() - 1;
+    ll rSc = __builtin_clz(r);
+    r2 = tR << rSc;
+    lg_d2 = lgl(a.back() - a.front()) + rSc - 64;
+    lg_d = lgl(a.back() - a.front()) - lgScale;
+    d = (a.back() - a.front()) >> lgScale;
+    yLS = a.front() >> lgScale;
   }
 
   unsigned lgScale;
+  unsigned lg_d;
+  unsigned lg_d2;
+  ll r;
+  ll r2;
+  ll d;
+  ll yLS;
   const std::vector<ll> a;
 };
 
@@ -355,7 +374,7 @@ Search is(const ll y, const IntStruct& s) {
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
   // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
-  if (y >= yR) return Search{(int)r};
+  if (y >= yR) return Search{(int)r, 2};
   while (a[m] < y) m++;
   return Search{(int)m};
 }
@@ -368,7 +387,38 @@ Search is2(const ll y, const IntStruct& s) {
   const unsigned lgScale = s.lgScale;
   ll n = (r-l)*((y-yL) >> lgScale);
   ll d = ((yR - yL) >> lgScale);
-  ll m = l + dL.div(n,d);
+  ll m = l + dL2.div(n,d);
+#ifndef NDEBUG
+  printf(" %ld", m);
+#endif
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]); // we know this because n would've been less than d
+  if (a[m] > y) {
+    do { m--; } while (a[m] > y);
+    return Search{(int)m};
+  }
+
+  // n < d implies that we should start from the left
+  // we know that l = m because we didn't go into the only path ewhere that's not true
+  // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
+  if (y >= yR) return Search{(int)r, 2};
+  while (a[m] < y) m++;
+  return Search{(int)m};
+}
+
+Search is3(const ll y, const IntStruct& s) {
+  typedef __uint128_t u128;
+
+  const std::vector<ll>& a = s.a;
+  ll l = 0, r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  ll yR = a[r], yL = a[l];
+  ll n = ((u128)s.r2 * (y-yL)) >> 64;
+  ll m = l + (n >> s.lg_d2);
+#ifndef NDEBUG
+  printf(" %ld", m);
+#endif
   assert(m <= r);
   assert(m >= l);
   assert(a[m] >= a[l]); // we know this because n would've been less than d
@@ -448,7 +498,7 @@ int main() {
 
 
   typedef TestStats TS;
-  using BsFn = Search (*)(const ll, const BinStruct&);
+  //using BsFn = Search (*)(const ll, const BinStruct&);
   using IsFn = Search (*)(const ll, const IntStruct&);
   //using OsFn = Search (*)(const ll, OracleStruct&);
 
@@ -456,8 +506,19 @@ int main() {
   //std::vector<TS> tests = { TS{"bsPVKEq2"}, TS{"is2"}
 //  std::vector<TS> tests = { TS{"is"}
   std::vector<TS> tests = {
-       TS{"bs   "}, TS{"is   "}
-      ,TS{"bs2   "}, TS{"is   "}
+#ifndef REVERSE
+     TS{"is   "}
+    ,TS{"is2  "}
+    ,TS{"is2  "}
+    ,TS{"is   "}
+#else
+     TS{"is2  "}
+    ,TS{"is   "}
+    ,TS{"is   "}
+    ,TS{"is2  "}
+#endif
+ //      TS{"bs   "}, TS{"is   "}
+ //     ,TS{"bs   "}, TS{"is2  "}
 //     ,TS{"bs   "}, TS{"is2  "}
 //
 //     ,TS{"bs   "}, TS{"is2  "}
@@ -467,7 +528,7 @@ int main() {
 #ifndef NDEBUG
   const int N_RUNS = 1 << 1;
 #else
-  const int N_RUNS = 1 << 16;
+  const int N_RUNS = 1000 * (1 << 13) / nNums;
 #endif
   time_t lastTime = time(NULL);
 
@@ -478,17 +539,19 @@ int main() {
       lastTime = nowTime;
     }
     int testIx = 0;
-    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
+#ifndef REVERSE
     RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
-    RunBenchmark<BinStruct, BsFn, bs>(searchVal, searchIndex, bsS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
-//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-//    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
 
-//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-//    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
-//    RunBenchmark<BinStruct, BsFn, bsPVKEq2>(searchVal, searchIndex, bsS, tests[testIx++]);
-//    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+#else
+    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+
+    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
+    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
+#endif
 
     assert((size_t)testIx == tests.size());
   }
@@ -499,7 +562,7 @@ int main() {
     std::sort(t.cyclesByIx.begin(), t.cyclesByIx.end());
     first = false;
     assert(t.cyclesByIx.size() == N_RUNS);
-//    printf("%s,%d\n", t.name.c_str(), t.runStats[0].sumSteps1);
+    //printf("*** %s,%d ****\n", t.name.c_str(), t.runStats[0].sumSteps1);
   }
   for (int i = 0; i < N_RUNS && i < 10; i++) {
     first = true;
