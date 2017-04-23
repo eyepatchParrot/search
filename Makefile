@@ -1,6 +1,7 @@
 #GC=g++
-GC=~/llvm/bin/clang++
-OPT=-g2 -Wall -std=c++11 -fno-omit-frame-pointer -ffast-math -march=native
+GC=clang++
+#GC=~/llvm/bin/clang++
+OPT=-Wall -std=c++11 -fno-omit-frame-pointer -ffast-math -march=native
 PROFILE=$(GC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(GC) $(OPT)
 
@@ -15,6 +16,10 @@ debug: search.cc
 
 div: div.cc
 	$(DEBUG) $< -o $@
+
+asm: search.cc
+	$(PROFILE) -g2 -S $< -o $@.s
+	$(PROFILE) $@.s -o $@
 
 clean:
 	rm -f ./profile ./debug
