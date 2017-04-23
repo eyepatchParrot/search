@@ -164,17 +164,28 @@ struct DivLut {
     if (d > N-1) {
       // note that this becomes ceiling log
       const int k = lgl_flr(d) - LG_N;
-      const T p = d >> k; // +1 for math, -1 for offset
-      return divFit(n, p, k + lg_qT[p]);
+      const T pIx = d >> k; // 1 + (d-1) >> k, but we started d, and -1 for index
+      return divFit(n, pT[pIx], k + lg_qT[pIx]);
     } else {
-      return divFit(n, d+(-1+1), lg_qT[d+(-1+1)]);
+      return divFit(n, pT[d], lg_qT[d]);
+    }
+  }
+
+  void one_d(const T d, T& p, int& lg_q) const {
+    if (d > N) {
+      const int k = lgl_flr(d) - LG_N;
+      ll pIx = (d-1) >> k;
+      p = pT[pIx];
+      lg_q = k + lg_qT[pIx];
+    } else {
+      p = pT[d];
+      lg_q = lg_qT[d];
     }
   }
 
   T divFit(T n, T p, int lg_q) {
-    assert(p <= N);
     // assuming that we're in the range
-    T hi = ((DT)n * pT[p]) >> 64;
+    T hi = ((DT)n * p) >> 64;
     return hi >> lg_q;
   }
 
@@ -276,8 +287,9 @@ struct IntStruct {
     r2 = tR << rSc;
     lg_d2 = lgl(a.back() - a.front()) + rSc - 64;
     lg_d = lgl(a.back() - a.front()) - lgScale;
-    d = (a.back() - a.front()) >> lgScale;
     yLS = a.front() >> lgScale;
+    ll d = (a.back() - a.front()) >> lgScale;
+    dL.one_d(d, p, lg_q);
   }
 
   unsigned lgScale;
@@ -285,8 +297,8 @@ struct IntStruct {
   unsigned lg_d2;
   ll r;
   ll r2;
-  ll d;
   ll yLS;
+  ll p; int lg_q;
   const std::vector<ll> a;
 };
 
@@ -374,7 +386,7 @@ Search is(const ll y, const IntStruct& s) {
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
   // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
-  if (y >= yR) return Search{(int)r, 2};
+  if (y >= yR) return Search{(int)r};
   while (a[m] < y) m++;
   return Search{(int)m};
 }
@@ -386,8 +398,8 @@ Search is2(const ll y, const IntStruct& s) {
   ll yR = a[r], yL = a[l];
   const unsigned lgScale = s.lgScale;
   ll n = (r-l)*((y-yL) >> lgScale);
-  ll d = ((yR - yL) >> lgScale);
-  ll m = l + dL2.div(n,d);
+  ll m = l + dL.divFit(n,s.p, s.lg_q);
+
 #ifndef NDEBUG
   printf(" %ld", m);
 #endif
@@ -402,7 +414,7 @@ Search is2(const ll y, const IntStruct& s) {
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
   // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
-  if (y >= yR) return Search{(int)r, 2};
+  if (y >= yR) return Search{(int)r};
   while (a[m] < y) m++;
   return Search{(int)m};
 }
@@ -509,13 +521,9 @@ int main() {
 #ifndef REVERSE
      TS{"is   "}
     ,TS{"is2  "}
-    ,TS{"is2  "}
-    ,TS{"is   "}
 #else
      TS{"is2  "}
     ,TS{"is   "}
-    ,TS{"is   "}
-    ,TS{"is2  "}
 #endif
  //      TS{"bs   "}, TS{"is   "}
  //     ,TS{"bs   "}, TS{"is2  "}
@@ -528,7 +536,7 @@ int main() {
 #ifndef NDEBUG
   const int N_RUNS = 1 << 1;
 #else
-  const int N_RUNS = 1000 * (1 << 13) / nNums;
+  const int N_RUNS = 1000 * (1 << 16) / nNums;
 #endif
   time_t lastTime = time(NULL);
 
@@ -542,15 +550,9 @@ int main() {
 #ifndef REVERSE
     RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
     RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
-
-    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
 #else
     RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
     RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
-
-    RunBenchmark<IntStruct, IsFn, is >(searchVal, searchIndex, isS, tests[testIx++]);
-    RunBenchmark<IntStruct, IsFn, is2 >(searchVal, searchIndex, isS, tests[testIx++]);
 #endif
 
     assert((size_t)testIx == tests.size());
