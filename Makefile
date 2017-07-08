@@ -4,33 +4,43 @@ GC=~/llvm/bin/clang++
 OPT=-Wall -std=c++11 -fno-omit-frame-pointer -ffast-math -march=native -ggdb
 PROFILE=$(GC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(GC) $(OPT)
-BENCHMARKS=-DIS=1 -DBS=2 -DOS=3
-R_BENCHMARKS=-DIS=2 -DBS=1
+BENCHMARKS=-DBS=1 -DIS=2
 
-.PHONY: profile r_profile
-profile: search.cc
-	$(PROFILE) $(BENCHMARKS) $< -o $@
-
-r_profile: search.cc
-	$(PROFILE) $(R_BENCHMARKS) $< -o $@
+.PHONY: profile
+profile: p2iis r2iis input.uniform.1000.20
+	./p2iis < input.uniform.1000.20
+	./r2iis < input.uniform.1000.20
 
 p1iu: search.cc
-	$(PROFILE) -DIS=1 $< -o $@
+	$(PROFILE) -DNSORT -DIS=1 $< -o $@
 
 p1bu: search.cc
-	$(PROFILE) -DBS=1 $< -o $@
+	$(PROFILE) -DNSORT -DBS=1 $< -o $@
 
 p2ibu: search.cc
-	$(PROFILE) -DIS=1 -DBS=2 $< -o $@
+	$(PROFILE) -DNSORT -DIS=1 -DBS=2 $< -o $@
 
 p2ibs: search.cc
-	$(PROFILE) -DSORT -DIS=1 -DBS=2 $< -o $@
+	$(PROFILE) -DIS=1 -DBS=2 $< -o $@
 
 p1is: search.cc
-	$(PROFILE) -DSORT -DIS=1 $< -o $@
+	$(PROFILE) -DIS=1 $< -o $@
 
 p1bs: search.cc
-	$(PROFILE) -DSORT -DBS=1 $< -o $@
+	$(PROFILE) -DBS=1 $< -o $@
+
+p2iis: search.cc
+	$(PROFILE) -DIS=1 -DIS2=2 $< -o $@
+
+p2iiu: search.cc
+	$(PROFILE) -DNSORT -DIS=1 -DIS2=2 $< -o $@
+
+r2iis: search.cc
+	$(PROFILE) -DIS=2 -DIS2=1 $< -o $@
+
+puk.%: input.uniform.1000.1
+	$* < $<
+
 
 debug: search.cc
 	$(DEBUG) $(BENCHMARKS) search.cc -o $@

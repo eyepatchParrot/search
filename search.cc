@@ -54,8 +54,14 @@ TestStats benchmark(
   for (int runIx = 0; runIx < nRuns; runIx++) {
     ll st = __rdtsc();
 
-    for (int i = 0; i < N_NUMS; i++)
-      sumIx += f(vals[i], s);
+    for (int i = 0; i < N_NUMS; i++) {
+#ifndef NDEBUG
+      fprintf(stderr,"%d,%d,", i,indexes[i]);
+#endif
+      int ix = f(vals[i], s);
+      sumIx += ix;
+      assert(ix == indexes[i]);
+    }
 
     ll et = __rdtsc();
     ts.datum(st, et);
@@ -310,7 +316,7 @@ struct OracleStruct {
 int bsPVKEq2(const ll x, BinStruct& s) {
   const std::vector<ll>& array = s.a;
   const int MIN_EQ_SZ = 2;
-  int leftIndex = 0;                                                               
+  long leftIndex = 0;                                                               
   int n = array.size();                                                            
   int half;
   while ((half = n) > MIN_EQ_SZ) {
@@ -327,7 +333,107 @@ int bsPVKEq2(const ll x, BinStruct& s) {
   return leftIndex;
 }
 
+int bsPVKEq3(const ll x, BinStruct& s) {
+  const std::vector<ll>& array = s.a;
+  const int MIN_EQ_SZ = 2;
+  long leftIndex = 0;                                                               
+  int n = array.size();                                                            
+  while (n > MIN_EQ_SZ) {
+    int half = n / 2;
+    n -= half;
+    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+  }
+  while (n > 1) {
+    int half = n / 2;
+    n = array[leftIndex + half] == x ? 0 : n - half;
+    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+  }                                                                                
+  assert(array[leftIndex] == x);  
+  return leftIndex;
+}
+
+int isSIMD(const ll y, IntStruct& s) {
+  typedef uint64_t v4u __attribute__ ((vector_size (32)));
+  const std::vector<ll>& a = s.a;
+  ll l = 0, r = a.size() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  ll yR = a[r], yL = a[l];
+  const unsigned lgScale = s.lgScale;
+  ll n = (r-l)*((y-yL) >> lgScale);
+  ll m = l + dL.divFit(n,s.p, s.lg_q);
+#ifndef NDEBUG
+  fprintf(stderr,"%ld\n", m);
+#endif
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]); // we know this because n would've been less than d
+  if (a[m] > y) {
+    while (m >= 4) {
+      m -= 4;
+      const ll* v = a.data() + m;
+      int off = 0;
+      const v4u ymm1 = _mm256_cmpgt_epi64((v4u){v[off++], v[off++], v[off++], v[off++]}, (v4u){y,y,y,y});
+      const int t1 = _mm256_movemask_epi8(ymm1);
+      const int t2 = ~t1;
+      if (t2) {
+        const int t3 = __builtin_clz(t2);
+        const int t4 = t3 / 8;
+        const int t5 = 3 + m - t4;
+        return t5;
+      }
+    }
+    do { m--; } while (a[m] > y);
+    return (int)m;
+  }
+
+  // n < d implies that we should start from the left
+  // we know that l = m because we didn't go into the only path ewhere that's not true
+  // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
+  //while (m + 3 <= r) {
+  //  const ll* v = a.data() + m;
+  //  // Compare a vector of the data with a vector of the searched for element
+  //  // Gather together the results of each comparison into one byte per element
+  //  // is mask ever not true?
+  //  int off = 0;
+  //  const v4u ymm1 =
+  //    _mm256_cmpgt_epi64((v4u){y,y,y,y}, (v4u){v[off++], v[off++], v[off++], v[off++]});
+  //  const int t1 = _mm256_movemask_epi8(ymm1);
+  //  const int t2 = ~t1;
+  //  //const v4u ymm2 =
+  //  //  _mm256_cmpgt_epi64((v4u){y,y,y,y}, (v4u){v[off++], v[off++], v[off++], v[off++]});
+  //  //const int ea1 =
+  //  //  _mm256_testc_si256(
+  //  //      ymm1,
+  //  //      (v4u){(ll)-1, (ll)-1, (ll)-1, (ll)-1});
+  //  //const int ea2 =
+  //  //  _mm256_testc_si256(
+  //  //      ymm2,
+  //  //      (v4u){(ll)-1, (ll)-1, (ll)-1, (ll)-1});
+  //  //const int ea3 = ea1 & ea2; // look for any zero-bits
+
+  //  if (t2) {
+  //    //ll t1 = (uint32_t)_mm256_movemask_epi8(ymm1);
+  //    //ll t2 = (uint32_t)_mm256_movemask_epi8(ymm2);
+  //    //ll t3 = t2 << 32;
+  //    //ll t4 = t3 | t1;
+  //    //int t5 = __builtin_clzl(t4);
+  //    //int t6 = t5 / 8;
+  //    //int t7 = 8 + (int)m - t6;
+  //    int t3 = __builtin_ctz(t2);
+  //    int t4 = t3 / 8;
+  //    int t5 = m + t4;
+  //    return t5;
+  //  }
+  //  m += 4;
+  //}
+
+  if (y >= yR) return (int)r;
+  while (a[m] < y) m++;
+  return (int)m;
+}
+
 int is2(const ll y, IntStruct& s) {
+  //typedef uint64_t v4u __attribute__ ((vector_size (32)));
   const std::vector<ll>& a = s.a;
   ll l = 0, r = a.size() - 1;
   assert(r - l >= 0); // assume non-empty vector
@@ -343,6 +449,20 @@ int is2(const ll y, IntStruct& s) {
   assert(m >= l);
   assert(a[m] >= a[l]); // we know this because n would've been less than d
   if (a[m] > y) {
+    //while (m >= 4) {
+    //  m -= 4;
+    //  const ll* v = a.data() + m;
+    //  int off = 0;
+    //  const v4u ymm1 = _mm256_cmpgt_epi64((v4u){v[off++], v[off++], v[off++], v[off++]}, (v4u){y,y,y,y});
+    //  const int t1 = _mm256_movemask_epi8(ymm1);
+    //  const int t2 = ~t1;
+    //  if (t2) {
+    //    const int t3 = __builtin_clz(t2);
+    //    const int t4 = t3 / 8;
+    //    const int t5 = 3 + m - t4;
+    //    return t5;
+    //  }
+    //}
     do { m--; } while (a[m] > y);
     return (int)m;
   }
@@ -378,13 +498,18 @@ int main(int argc, char *argv[]) {
 #define RUN_BS \
   do { BinStruct bsS(input); \
   tests.emplace_back( \
-      benchmark<N_RUNS, BinStruct, bsPVKEq2>( \
+      benchmark<N_RUNS, BinStruct, bsPVKEq3>( \
         "bs", testKeys, testIndexes, bsS)); } while (0);
 #define RUN_OS \
   do { OracleStruct osS(input, testIndexes); \
     tests.emplace_back( \
       benchmark<N_RUNS, OracleStruct, oracle>( \
         "os", testKeys, testIndexes, osS)); } while (0);
+#define RUN_IS2 \
+  do { IntStruct isS(input); \
+  tests.emplace_back( \
+      benchmark<N_RUNS, IntStruct, isSIMD>( \
+        "isSIMD", testKeys, testIndexes, isS)); } while (0);
 
   int nNums;
   cin >> nNums;
@@ -403,15 +528,15 @@ int main(int argc, char *argv[]) {
 
   std::vector<TestStats> tests;
   OracleStruct osS(input, testIndexes);
-  T1(RUN_IS, RUN_BS, RUN_OS)
-  T2(RUN_IS, RUN_BS, RUN_OS)
-  T3(RUN_IS, RUN_BS, RUN_OS)
+  T1(RUN_IS, RUN_BS, RUN_OS,RUN_IS2)
+  T2(RUN_IS, RUN_BS, RUN_OS,RUN_IS2)
+  T3(RUN_IS, RUN_BS, RUN_OS,RUN_IS2)
 
   // Set-up the headers and organize data
   bool first = true;
   for (auto& t : tests) {
     printf("%s%s", true != first ? "," : "", t.name.c_str());
-#ifdef SORT
+#ifndef NSORT
     std::sort(t.cyclesByIx.begin(), t.cyclesByIx.end());
 #endif
     first = false;

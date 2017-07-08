@@ -12,31 +12,37 @@
 #endif
 
 #if IS == 1
-#define T1(X,Y,Z) X
+#define T1(X,Y,Z,W) X
 #elif BS == 1
-#define T1(X,Y,Z) Y
+#define T1(X,Y,Z,W) Y
 #elif OS == 1
-#define T1(X,Y,Z) Z
+#define T1(X,Y,Z,W) Z
+#elif IS2 == 1
+#define T1(X,Y,Z,W) W
 #else
-#define T1(X,Y,Z)
+#define T1(X,Y,Z,W)
 #endif
 #if IS == 2
-#define T2(X,Y,Z) X
+#define T2(X,Y,Z,W) X
 #elif BS == 2
-#define T2(X,Y,Z) Y
+#define T2(X,Y,Z,W) Y
 #elif OS == 2
-#define T2(X,Y,Z) Z
+#define T2(X,Y,Z,W) Z
+#elif IS2 == 2
+#define T2(X,Y,Z,W) W
 #else
-#define T2(X,Y,Z)
+#define T2(X,Y,Z,W)
 #endif
 #if IS == 3
-#define T3(X,Y,Z) X
+#define T3(X,Y,Z,W) X
 #elif BS == 3
-#define T3(X,Y,Z) Y
+#define T3(X,Y,Z,W) Y
 #elif OS == 3
-#define T3(X,Y,Z) Z
+#define T3(X,Y,Z,W) Z
+#elif IS2 == 3
+#define T3(X,Y,Z,W) W
 #else
-#define T3(X,Y,Z)
+#define T3(X,Y,Z,W)
 #endif
 
 unsigned lg(unsigned x) {
