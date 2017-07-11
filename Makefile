@@ -7,9 +7,9 @@ DEBUG=$(GC) $(OPT)
 BENCHMARKS=-DBS=1 -DIS=2
 
 .PHONY: profile
-profile: p2iis r2iis input.uniform.1000.20
-	./p2iis < input.uniform.1000.20
-	./r2iis < input.uniform.1000.20
+profile: p2iis r2iis input/input.uniform.1000.20
+	./p2iis < input/input.uniform.1000.20
+	./r2iis < input/input.uniform.1000.20
 
 p1iu: search.cc
 	$(PROFILE) -DNSORT -DIS=1 $< -o $@
@@ -38,7 +38,7 @@ p2iiu: search.cc
 r2iis: search.cc
 	$(PROFILE) -DIS=2 -DIS2=1 $< -o $@
 
-puk.%: input.uniform.1000.1
+puk.%: input/input.uniform.1000.1
 	$* < $<
 
 
@@ -59,8 +59,8 @@ clean:
 DISTRIBUTION=uniform
 ARRAY_SIZE=1000
 .PHONY: input
-input: $(foreach distr,$(DISTRIBUTION),$(foreach sz,$(ARRAY_SIZE),input.$(distr).$(sz)))
+input: $(foreach distr,$(DISTRIBUTION),$(foreach sz,$(ARRAY_SIZE),input/input.$(distr).$(sz)))
 
 # get the suffix and drop the pre-pended dot.
-input.%:
+input/input.%:
 	python gendata.py $(subst .,,$(suffix $(basename $*))) $(basename $(basename $*)) > $@

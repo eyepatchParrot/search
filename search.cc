@@ -250,15 +250,18 @@ struct BinStruct {
 };
 
 struct IntStruct {
-  IntStruct(const std::vector<ll>& _a) : a(_a) {
-    lgScale = lg(a.size() - 1);
-    ll tR = a.size() - 1;
+  IntStruct(const std::vector<ll>& _a) : v(_a.size() + 16,0) {
+    std::copy(_a.begin(), _a.end(), v.begin() + 8);
+    for (int i = 0; i < 8; i++) v[i] = std::numeric_limits<ll>::min();
+    for (int i = _a.size() + 8; i < v.size(); i++) v[i] = std::numeric_limits<ll>::max();
+    lgScale = lg(_a.size() - 1);
+    ll tR = _a.size() - 1;
     ll rSc = __builtin_clz(r);
     r2 = tR << rSc;
-    lg_d2 = lgl(a.back() - a.front()) + rSc - 64;
-    lg_d = lgl(a.back() - a.front()) - lgScale;
-    yLS = a.front() >> lgScale;
-    ll d = (a.back() - a.front()) >> lgScale;
+    lg_d2 = lgl(_a.back() - _a.front()) + rSc - 64;
+    lg_d = lgl(_a.back() - _a.front()) - lgScale;
+    yLS = _a.front() >> lgScale;
+    ll d = (_a.back() - _a.front()) >> lgScale;
     dL.one_d(d, p, lg_q);
   }
 
@@ -269,7 +272,9 @@ struct IntStruct {
   ll r2;
   ll yLS;
   ll p; int lg_q;
-  const std::vector<ll>& a;
+  std::vector<ll> v;
+  size_t szA() { return v.size() - 16; };
+  const ll* a() { return &v[8]; };
 };
 
 struct IntStructT {
@@ -354,8 +359,8 @@ int bsPVKEq3(const ll x, BinStruct& s) {
 
 int isSIMD(const ll y, IntStruct& s) {
   typedef uint64_t v4u __attribute__ ((vector_size (32)));
-  const std::vector<ll>& a = s.a;
-  ll l = 0, r = a.size() - 1;
+  const ll* a = s.a();
+  ll l = 0, r = s.szA() - 1;
   assert(r - l >= 0); // assume non-empty vector
   ll yR = a[r], yL = a[l];
   const unsigned lgScale = s.lgScale;
@@ -370,7 +375,7 @@ int isSIMD(const ll y, IntStruct& s) {
   if (a[m] > y) {
     while (m >= 4) {
       m -= 4;
-      const ll* v = a.data() + m;
+      const ll* v = a + m;
       int off = 0;
       const v4u ymm1 = _mm256_cmpgt_epi64((v4u){v[off++], v[off++], v[off++], v[off++]}, (v4u){y,y,y,y});
       const int t1 = _mm256_movemask_epi8(ymm1);
@@ -427,51 +432,36 @@ int isSIMD(const ll y, IntStruct& s) {
   //  m += 4;
   //}
 
-  if (y >= yR) return (int)r;
+  //if (y >= yR) return (int)r;
   while (a[m] < y) m++;
   return (int)m;
 }
 
 int is2(const ll y, IntStruct& s) {
-  //typedef uint64_t v4u __attribute__ ((vector_size (32)));
-  const std::vector<ll>& a = s.a;
-  ll l = 0, r = a.size() - 1;
+  const ll* a = s.a();
+  ll l = 0, r = s.szA() - 1;
   assert(r - l >= 0); // assume non-empty vector
-  ll yR = a[r], yL = a[l];
+  ll yL = a[l];
   const unsigned lgScale = s.lgScale;
   ll n = (r-l)*((y-yL) >> lgScale);
   ll m = l + dL.divFit(n,s.p, s.lg_q);
 
-//#ifndef NDEBUG
-//  printf(" %ld", m);
-//#endif
   assert(m <= r);
   assert(m >= l);
   assert(a[m] >= a[l]); // we know this because n would've been less than d
   if (a[m] > y) {
-    //while (m >= 4) {
-    //  m -= 4;
-    //  const ll* v = a.data() + m;
-    //  int off = 0;
-    //  const v4u ymm1 = _mm256_cmpgt_epi64((v4u){v[off++], v[off++], v[off++], v[off++]}, (v4u){y,y,y,y});
-    //  const int t1 = _mm256_movemask_epi8(ymm1);
-    //  const int t2 = ~t1;
-    //  if (t2) {
-    //    const int t3 = __builtin_clz(t2);
-    //    const int t4 = t3 / 8;
-    //    const int t5 = 3 + m - t4;
-    //    return t5;
-    //  }
-    //}
-    do { m--; } while (a[m] > y);
+    for (;; m -= 8)
+      for (ll i = 0; i < 8; i++)
+        if (a[m-i] <= y) return (int)(m - i);
     return (int)m;
   }
 
   // n < d implies that we should start from the left
   // we know that l = m because we didn't go into the only path ewhere that's not true
   // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
-  if (y >= yR) return (int)r;
-  while (a[m] < y) m++;
+  for (;; m += 8)
+    for (ll i = 0; i < 8; i++)
+      if (a[m+i] >= y) return (int)(m+i);
   return (int)m;
 }
 
