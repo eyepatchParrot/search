@@ -3,6 +3,12 @@
 
 #include <cinttypes>
 
+#ifdef NDEBUG
+#define ERR(A, args...)
+#else
+#define ERR(A, args...) fprintf(stderr, A, args)
+#endif
+
 #ifndef N_RUNS
 #ifndef NDEBUG
 #define N_RUNS 1 << 1
