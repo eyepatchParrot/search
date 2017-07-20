@@ -7,10 +7,12 @@ DEBUG=$(CC) $(OPT)
 BENCHMARKS=-DIS2=1 -DIS=2
 LIB=-I$(HOME)/include -L$(HOME)/lib 
 
+#	./p2iis 10 -1 < input/um_uniform_1m.txt
+#	./r2iis 10 -1 < input/um_uniform_1m.txt
 .PHONY: profile debug p2iis r2iis d_lin lin p2ibs r2ibs
-profile: p2ibs r2ibs input/uniform.1000.20
-	./p2ibs < input/uniform.1000.20
-	./r2ibs < input/uniform.1000.20
+profile: p2iis r2iis input/uniform.1000.20
+	./p2iis 10 -1 < input/uniform.1000.20
+	./r2iis 10 -1 < input/uniform.1000.20
 
 p1iu: search.cc util.h
 	$(PROFILE) -DNSORT -DIS=1 $< -o $@
@@ -26,9 +28,11 @@ p2ibu: search.cc util.h
 
 p2ibs: search.cc util.h
 	$(PROFILE) -DIS=1 -DBS=2 $< -o $@
+	./$@ < input/uniform.1000.20
 
 r2ibs: search.cc util.h
 	$(PROFILE) -DIS=2 -DBS=1 $< -o $@
+	./$@ < input/uniform.1000.20
 
 p1is: search.cc util.h
 	$(PROFILE) -DIS=1 $< -o $@

@@ -10,7 +10,7 @@
 
 #define REVERSE
 
-typedef int V;
+typedef int64_t V;
 typedef std::vector<V> vi;
 
 using SearchFn = int(const V*, int, V);
@@ -46,38 +46,40 @@ static void BM_Search(benchmark::State& state) {
 //  ->Arg(44)->Arg(48)->Arg(52)->Arg(56)->Arg(60)->Arg(64)->Arg(68)->Arg(72)->Arg(76)
 #define R RangeMultiplier(3)->Ranges({{2,40}})
 
-template <int roll=1, bool reverse=false>
-int linSIMD(const V* arr, const int guessIx, const int x) {                      
-  auto vecXX = reverse? _mm256_set1_epi32(x): _mm256_set1_epi32(x-1);
-  const int *ptr = arr;
+template < bool reverse=false, int roll=1>
+int linSIMD(const V* arr, const int guessIx, const V x) {
+  auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
+  auto ptr = arr;
   auto i = guessIx;
-	int misalignment = ((uintptr_t)(ptr+i) & 31)/4;
-	for (int j = 0; j < 8*roll; j++)
+	int misalignment = ((uintptr_t)(ptr+i) & 31)/sizeof(V);
+	for (int j = 0; j < 4*roll; j++)
     if (reverse? (arr[i-j] <= x) : arr[i+j] >= x) return reverse? i-j : i+j;
-  i = reverse? (i-8*(roll-1) + misalignment) : i + 8*roll - misalignment;
+  i = reverse? (i-4*(roll-1) - misalignment) : i + 4*roll - misalignment;
   // 32-aligned main loop                                                          
-  for (;;i = reverse?(i-32) : i+32) {
+  for (;;i = reverse?(i-16) : i+16) {
     auto sign = reverse?-1:1;
     auto av0 = _mm256_load_si256((__m256i*)(ptr + i + sign*0));
-    auto av1 = _mm256_load_si256((__m256i*)(ptr + i + sign*8));
-    auto av2 = _mm256_load_si256((__m256i*)(ptr + i + sign*16));
-    auto av3 = _mm256_load_si256((__m256i*)(ptr + i + sign*24));
-    auto cmp3 = reverse? _mm256_cmpgt_epi32(vecXX, av3) :  _mm256_cmpgt_epi32(av3, vecXX);
+    auto av1 = _mm256_load_si256((__m256i*)(ptr + i + sign*4));
+    auto av2 = _mm256_load_si256((__m256i*)(ptr + i + sign*8));
+    auto av3 = _mm256_load_si256((__m256i*)(ptr + i + sign*12));
+    auto cmp3 = reverse? _mm256_cmpgt_epi64(vecXX, av3) :  _mm256_cmpgt_epi64(av3, vecXX);
     auto msk3 = _mm256_movemask_epi8(cmp3);
     if (!msk3) continue;
-    auto cmp0 = reverse? _mm256_cmpgt_epi32(vecXX, av0) :   _mm256_cmpgt_epi32(av0,vecXX );
-    auto cmp1 = reverse? _mm256_cmpgt_epi32(vecXX, av1) :   _mm256_cmpgt_epi32(av1,vecXX );
-    auto cmp2 = reverse? _mm256_cmpgt_epi32(vecXX, av2) :   _mm256_cmpgt_epi32(av2,vecXX );
+    auto cmp0 = reverse? _mm256_cmpgt_epi64(vecXX, av0) :   _mm256_cmpgt_epi64(av0,vecXX );
+    auto cmp1 = reverse? _mm256_cmpgt_epi64(vecXX, av1) :   _mm256_cmpgt_epi64(av1,vecXX );
+    auto cmp2 = reverse? _mm256_cmpgt_epi64(vecXX, av2) :   _mm256_cmpgt_epi64(av2,vecXX );
     auto msk0 = _mm256_movemask_epi8(cmp0);
     auto msk1 = _mm256_movemask_epi8(cmp1);
     auto msk2 = _mm256_movemask_epi8(cmp2);
-    if (msk0) return reverse? (i + 8 - _lzcnt_u32(msk0) / 4 - 0 * 8) : i + _tzcnt_u32(msk0) / 4 + 0 * 8;
-    if (msk1) return reverse? (i + 8 - _lzcnt_u32(msk1) / 4 - 1 * 8) : i + _tzcnt_u32(msk1) / 4 + 1 * 8;
-    if (msk2) return reverse? (i + 8 - _lzcnt_u32(msk2) / 4 - 2 * 8) : i + _tzcnt_u32(msk2) / 4 + 2 * 8;
-    if (msk3) return reverse? (i + 8 - _lzcnt_u32(msk3) / 4 - 3 * 8) : i + _tzcnt_u32(msk3) / 4 + 3 * 8;
+    if (msk0) return reverse? (i + 4 - _lzcnt_u32(msk0) / 8 - 0 * 4) : i + _tzcnt_u32(msk0) / 8 + 0 * 4;
+    if (msk1) return reverse? (i + 4 - _lzcnt_u32(msk1) / 8 - 1 * 4) : i + _tzcnt_u32(msk1) / 8 + 1 * 4;
+    if (msk2) return reverse? (i + 4 - _lzcnt_u32(msk2) / 8 - 2 * 4) : i + _tzcnt_u32(msk2) / 8 + 2 * 4;
+    if (msk3) return reverse? (i + 4 - _lzcnt_u32(msk3) / 8 - 3 * 4) : i + _tzcnt_u32(msk3) / 8 + 3 * 4;
   }
 }
-//BENCHMARK_TEMPLATE(BM_Search, linSIMD<1,true>, true)->R;
+BENCHMARK_TEMPLATE(BM_Search, linSIMD)->R;
+BENCHMARK_TEMPLATE(BM_Search, linSIMD<false,2>)->R;
+BENCHMARK_TEMPLATE(BM_Search, linSIMD<false,3>)->R;
 
 template <int n,bool reverse=false>
 int linUnroll(const V* a, int m, V k) {
@@ -90,40 +92,9 @@ int linUnroll(const V* a, int m, V k) {
 }
 
 //BENCHMARK_TEMPLATE(BM_Search, linUnroll<8>)->R;
+//BENCHMARK_TEMPLATE(BM_Search, linUnroll<4>)->R;
 //BENCHMARK_TEMPLATE(BM_Search, linUnroll<8,true>,true)->R;
 
-template <int roll=1>
-int linSIMD2(const V* arr, const int guessIx, const int x) {                      
-  auto vecXX = _mm256_set1_epi32(x - 1);                                           
-  const int *ptr = arr;
-  auto i = guessIx;
-	int misalignment = ((uintptr_t)(ptr+i) & 31)/4;
-	for (int j = 0; j < 8*roll; j++)
-		if (arr[i+j] >= x) return i+j;
-  i += 8*roll - misalignment;
-  // 32-aligned main loop                                                          
-  for (; ; i += 32) {
-    auto av0 = _mm256_load_si256((__m256i*)(ptr + i));
-    auto av1 = _mm256_load_si256((__m256i*)(ptr + i + 8));
-    auto av2 = _mm256_load_si256((__m256i*)(ptr + i + 16));
-    auto av3 = _mm256_load_si256((__m256i*)(ptr + i + 24));
-    auto cmp3 = _mm256_cmpgt_epi32(av3, vecXX);
-    auto msk3 = _mm256_movemask_epi8(cmp3);
-    if (!msk3) continue;
-    auto cmp0 = _mm256_cmpgt_epi32(av0, vecXX);
-    auto cmp1 = _mm256_cmpgt_epi32(av1, vecXX);
-    auto cmp2 = _mm256_cmpgt_epi32(av2, vecXX);
-    auto msk0 = _mm256_movemask_epi8(cmp0);
-    auto msk1 = _mm256_movemask_epi8(cmp1);
-    auto msk2 = _mm256_movemask_epi8(cmp2);
-    if (msk0) return i + __builtin_ctz(msk0) / 4;
-    if (msk1) return i + __builtin_ctz(msk1) / 4 + 1 * 8;
-    if (msk2) return i + __builtin_ctz(msk2) / 4 + 2 * 8;
-    if (msk3) return i + __builtin_ctz(msk3) / 4 + 3 * 8;
-  }
-}
-BENCHMARK_TEMPLATE(BM_Search, linSIMD<>)->R;
-BENCHMARK_TEMPLATE(BM_Search, linSIMD2)->R;
 
 /*
 int linSIMDa(const vi& arr, const int guessIx, const int x) {                      
