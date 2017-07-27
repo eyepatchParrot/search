@@ -585,4 +585,94 @@ Search isSIMD(const ll y, const IntStruct& s) {
   return Search{(int)m};
 }
 
+//auto bsLin(const ll x, BinStruct& s) {
+//  const ll* array = s.a();
+//  const int MIN_EQ_SZ = 32;
+//  const int roll = 12;
+//  auto leftIndex = 0;                                                               
+//  auto n = s.szA();
+//  while (n > MIN_EQ_SZ) {
+//    auto half = n / 2;
+//    n -= half;
+//    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+//  }
+//  auto guess = leftIndex + n/2;
+//  if (array[guess] < x) {
+//    guess++;
+//    for (;;guess+=roll) for(int i=0;i<roll;i++)  if (array[guess +i] >= x)    return array[guess+i];
+//  } else for (;;guess-=roll) for(int i=0;i<roll;i++) if (array[guess-i] <= x) return array[guess-i];
+//}
+//
+//auto bsPVKEq2(const ll x, BinStruct& s) {
+//  const ll* array = s.a();
+//  const int MIN_EQ_SZ = 2;
+//  long leftIndex = 0;                                                               
+//  int n = s.szA();
+//  int half;
+//  while ((half = n) > MIN_EQ_SZ) {
+//    half /= 2;
+//    n -= half;
+//    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+//  }
+//  while ((half = n) > 1) {
+//    half /= 2;
+//    n = array[leftIndex + half] == x ? 0 : n - half;
+//    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+//  }                                                                                
+//  assert(array[leftIndex] == x);  
+//  return array[leftIndex];
+//}
+//
+//int is(const ll y, IntStruct& s) {
+//  const ll* a = s.a();
+//  ll l = 0, r = s.szA() - 1;
+//  assert(r - l >= 0); // assume non-empty vector
+//  ll yL = a[l];
+//  const unsigned lgScale = s.lgScale;
+//  ll n = (r-l)*((y-yL) >> lgScale);
+//  ll m = l + dL.divFit(n,s.p, s.lg_q);
+//
+//  assert(m <= r);
+//  assert(m >= l);
+//  assert(a[m] >= a[l]); // we know this because n would've been less than d
+//  if (a[m] > y) {
+//    m--;
+//    for (;; m -= 8)
+//      for (ll i = 0; i < 8; i++)
+//        if (a[m-i] <= y) return (int)(m - i);
+//    return (int)m;
+//  }
+//
+//  // n < d implies that we should start from the left
+//  // we know that l = m because we didn't go into the only path ewhere that's not true
+//  // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
+//  for (;; m += 8)
+//    for (ll i = 0; i < 8; i++)
+//      if (a[m+i] >= y) return (int)(m+i);
+//  return (int)m;
+//}
 
+template <int roll>
+int isLoop(const ll y, IntStruct& s) {
+#define N (r-l)*((y-a[l]) >> lgScale)
+  const ll* a = s.a();
+  ll l = 0, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  const unsigned lgScale = s.lgScale;
+  ll m = l + dL.divFit(N,s.p, s.lg_q);
+  for (;;) {
+    assert(m <= r); assert(m >= l); assert(a[m] >= a[l]); // we know this because n would've been less than d
+    if (a[m] > y) {
+      for (ll i = 0; i < roll; i++)
+        if (a[m-i] <= y) return (int)(m - i);
+      r = m;
+    } else {
+      for (ll i = 0; i < roll; i++)
+        if (a[m+i] >= y) return (int)(m+i);
+      l = m;
+    }
+    ll d = (a[r] - a[l]) >> lgScale;
+    m = l + dL.div(N,d);
+  }
+#undef N
+}

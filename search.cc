@@ -44,7 +44,7 @@ struct TestStats {
   }
 };
 
-template <typename S, int (f) (const ll, S& s)>
+template <typename S, ll (f) (const ll, S& s)>
 TestStats benchmark(
     std::string&& name,
     const std::vector<ll>& vals,
@@ -53,22 +53,22 @@ TestStats benchmark(
   constexpr int nRuns = N_RUNS;
   const auto N_NUMS = vals.size();
   auto ts = TestStats{name};
-  auto expSum = 0, ixSum = 0;
-  for (auto j=0;j<nRuns;j++) for (auto ix : indexes) expSum += ix;
+  auto expSum = 0UL, valSum = 0UL;
+  for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
   for (int runIx = 0; runIx < nRuns; runIx++) {
     ll st = __rdtsc();
 
     for (int i = 0; i < N_NUMS; i++) {
       ERR("%d,%d,", i,indexes[i]);
-      int ix = f(vals[i], s);
-      ixSum += ix;
-      assert(ix == indexes[i]);
+      auto val = f(vals[i], s);
+      valSum += val;
+      assert(val == vals[i]);
     }
 
     ll et = __rdtsc();
     ts.datum(st, et);
   }
-  if (ixSum != expSum) // check even when profiling
+  if (valSum != expSum) // check even when profiling
     fprintf(stderr, "mess up\n");
   return ts;
 }
@@ -114,6 +114,40 @@ struct IntStruct {
   const ll* a() { return &v[32]; };
 };
 
+// TODO hoisted division
+// TODO border optimization
+// TODO programatically find the size of the pruned array
+struct PruneStruct {
+  PruneStruct(const std::vector<ll>& _a) {
+    // a is guaranteed to be sorted, so we can generate each element myopically
+    auto vaSz = (int)(_a.size() * 0.8);
+    auto slope = (double)(vaSz-1) / (_a.back() - _a.front());
+    va.reserve(vaSz);
+    vb.reserve(_a.size());
+    for (auto i=0,j=0;i<vaSz;i++) {
+      while (j<_a.size() && (ll)(slope * (_a[j] - _a.front())) <= i) vb.push_back(_a[j++]);
+      assert(vb.size() > 0);
+      va.push_back(vb.back());
+      vb.pop_back();
+    }
+    std::sort(va.begin(), va.end());
+    assert(std::is_sorted(vb.begin(), vb.end()));
+    lgScale = lg(va.size() - 1);
+    ll d = (va.back() - va.front()) >> lgScale;
+    dL.one_d(d, p, lg_q);
+  }
+
+  std::vector<ll> va;
+  std::vector<ll> vb;
+  unsigned lgScale;
+  ll p;
+  int lg_q;
+  auto a() { return &va[0]; };
+  auto szA() { return va.size(); };
+  auto b() { return &vb[0]; };
+  auto szB() { return vb.size(); };
+};
+
 struct OracleStruct {
   // note that to ensure fast code, offset is always to the left, which means that offset searches wont have the full offset
   OracleStruct(const std::vector<ll>& _a, const std::vector<int>& _i, const int offset = 0, const bool rnd = false) : a(_a), j(0) {
@@ -139,26 +173,6 @@ struct OracleStruct {
   std::vector<int> i;
   int j;
 };
-
-int bsPVKEq2(const ll x, BinStruct& s) {
-  const ll* array = s.a();
-  const int MIN_EQ_SZ = 2;
-  long leftIndex = 0;                                                               
-  int n = s.szA();
-  int half;
-  while ((half = n) > MIN_EQ_SZ) {
-    half /= 2;
-    n -= half;
-    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
-  }
-  while ((half = n) > 1) {
-    half /= 2;
-    n = array[leftIndex + half] == x ? 0 : n - half;
-    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
-  }                                                                                
-  assert(array[leftIndex] == x);  
-  return leftIndex;
-}
 
 using SearchFn = int64_t(const ll*, int64_t, ll);
 template < bool reverse=false, int roll=3>
@@ -205,26 +219,8 @@ int64_t linUnroll(const ll* a, int64_t m, ll k) {
   }
 }
 
-int bsLin(const ll x, BinStruct& s) {
-  const ll* array = s.a();
-  const int MIN_EQ_SZ = 32;
-  const int roll = 12;
-  auto leftIndex = 0;                                                               
-  auto n = s.szA();
-  while (n > MIN_EQ_SZ) {
-    auto half = n / 2;
-    n -= half;
-    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
-  }
-  auto guess = leftIndex + n/2;
-  if (array[guess] < x) {
-    guess++;
-    for (;;guess+=roll) for(int i=0;i<roll;i++)  if (array[guess +i] >= x) return guess+i;
-  } else for (;;guess-=roll) for(int i=0;i<roll;i++) if (array[guess-i] <= x) return guess-i;
-}
-
 template <int MIN_EQ_SZ, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
-int bsLinT(const ll x, BinStruct& s) {
+auto bsLinT(const ll x, BinStruct& s) {
   const ll* array = s.a();
   auto leftIndex = 0;                                                               
   auto n = s.szA();
@@ -234,49 +230,18 @@ int bsLinT(const ll x, BinStruct& s) {
     leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
   }
   auto guess = leftIndex + n/2;
-  if (array[guess] < x) return baseForwardSearch(array,guess+1,x);
-  else return baseBackwardSearch(array,guess,x);
+  if (array[guess] < x) return array[baseForwardSearch(array,guess+1,x)];
+  else return array[baseBackwardSearch(array,guess,x)];
 }
 
-int oracle(const ll y, OracleStruct& s) {
+auto oracle(const ll y, OracleStruct& s) {
   int i = s.i[s.j++];
   s.j = s.j >= s.i.size() ? 0 : s.j;
-  return s.a[i] == y ? i : -1;
+  return s.a[i] == y ? s.a[i] : -1;
 }
-
-
-int is(const ll y, IntStruct& s) {
-  const ll* a = s.a();
-  ll l = 0, r = s.szA() - 1;
-  assert(r - l >= 0); // assume non-empty vector
-  ll yL = a[l];
-  const unsigned lgScale = s.lgScale;
-  ll n = (r-l)*((y-yL) >> lgScale);
-  ll m = l + dL.divFit(n,s.p, s.lg_q);
-
-  assert(m <= r);
-  assert(m >= l);
-  assert(a[m] >= a[l]); // we know this because n would've been less than d
-  if (a[m] > y) {
-    m--;
-    for (;; m -= 8)
-      for (ll i = 0; i < 8; i++)
-        if (a[m-i] <= y) return (int)(m - i);
-    return (int)m;
-  }
-
-  // n < d implies that we should start from the left
-  // we know that l = m because we didn't go into the only path ewhere that's not true
-  // note that (a[m] < y && a[m] < yR) was better than (a[m] < y && m < yR).
-  for (;; m += 8)
-    for (ll i = 0; i < 8; i++)
-      if (a[m+i] >= y) return (int)(m+i);
-  return (int)m;
-}
-
 
 template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
-int is2(const ll y, IntStruct& s) {
+auto is2(const ll y, IntStruct& s) {
   const ll* a = s.a();
   ll l = 0, r = s.szA() - 1;
   assert(r - l >= 0); // assume non-empty vector
@@ -287,33 +252,33 @@ int is2(const ll y, IntStruct& s) {
 
   assert(m <= r); assert(m >= l);
   assert(a[m] >= a[l]); // we know this because n would've been less than d
-  if (a[m] > y) return baseBackwardSearch(a,m-1,y);
-  return baseForwardSearch(a,m,y);
+  if (a[m] > y) return a[baseBackwardSearch(a,m-1,y)];
+  return a[baseForwardSearch(a,m,y)];
 }
 
-template <int roll>
-int is3(const ll y, IntStruct& s) {
-#define N (r-l)*((y-a[l]) >> lgScale)
-  const ll* a = s.a();
-  ll l = 0, r = s.szA() - 1;
+auto ps(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
   assert(r - l >= 0); // assume non-empty vector
-  const unsigned lgScale = s.lgScale;
-  ll m = l + dL.divFit(N,s.p, s.lg_q);
-  for (;;) {
-    assert(m <= r); assert(m >= l); assert(a[m] >= a[l]); // we know this because n would've been less than d
-    if (a[m] > y) {
-      for (ll i = 0; i < roll; i++)
-        if (a[m-i] <= y) return (int)(m - i);
-      r = m;
-    } else {
-      for (ll i = 0; i < roll; i++)
-        if (a[m+i] >= y) return (int)(m+i);
-      l = m;
-    }
-    ll d = (a[r] - a[l]) >> lgScale;
-    m = l + dL.div(N,d);
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  if (a[m] > y) {
+    while (m != 0 && a[m] > y) m--;
+    if (a[m] == y) return a[m];
+  } else {
+    while (m < r && a[m] < y) m++;
+    if (a[m] == y) return a[m];
   }
-#undef N
+  auto b = s.b();
+  auto i=0;
+  for (;i<s.szB() && b[i] < y;i++) ;
+  return b[i];
 }
 
 int main(int argc, char *argv[]) {
@@ -347,10 +312,10 @@ int main(int argc, char *argv[]) {
       benchmark<OracleStruct, oracle>( \
         "os", testKeys, testIndexes, osS)); } while (0);
 #define RUN_IS2 \
-  do { IntStruct isS(input); \
+  do { PruneStruct isS(input); \
   tests.emplace_back( \
-      benchmark<IntStruct, is2<linUnroll, linUnroll<true>>>( \
-        "is", testKeys, testIndexes, isS)); } while (0);
+      benchmark<PruneStruct, ps>( \
+        "ps", testKeys, testIndexes, isS)); } while (0);
 
   int nNums;
   cin >> nNums;
