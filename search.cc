@@ -69,7 +69,7 @@ TestStats benchmark(
     ts.datum(st, et);
   }
   if (valSum != expSum) // check even when profiling
-    fprintf(stderr, "mess up\n");
+    fprintf(stderr, "mess up %lu\n", vals.back());
   return ts;
 }
 
@@ -79,7 +79,10 @@ struct BinStruct {
     std::copy(_a.begin(), _a.end(), v.begin() + 16);
     for (int i = 0; i < 16; i++) v[i] = std::numeric_limits<ll>::min();
     for (int i = _a.size() + 16; i < v.size(); i++) v[i] = std::numeric_limits<int64_t>::max();
+    n_bs = lgl(_a.size()) - 5;
+    assert(n_bs > 0);
   }
+  long n_bs; 
   auto szA() { return v.size() - 32; };
   const ll* a() { return &v[16]; };
   private:
@@ -114,27 +117,49 @@ struct IntStruct {
   const ll* a() { return &v[32]; };
 };
 
-// TODO hoisted division
-// TODO border optimization
 // TODO programatically find the size of the pruned array
 struct PruneStruct {
+  auto a() { return &va[32]; };
+  auto szA() { return va.size() - 64; };
+  auto aBack() { return a()[szA()-1]; };
+  auto b() { return &vb[32]; };
+  auto szB() { return vb.size() - 64; };
+
   PruneStruct(const std::vector<ll>& _a) {
     // a is guaranteed to be sorted, so we can generate each element myopically
-    auto vaSz = (int)(_a.size() * 0.8);
+    auto vaSz = (int)(_a.size() * 0.801);
     auto slope = (double)(vaSz-1) / (_a.back() - _a.front());
-    va.reserve(vaSz);
+    va.reserve(vaSz + 64);
     vb.reserve(_a.size());
-    for (auto i=0,j=0;i<vaSz;i++) {
+    for (auto i=0;i<32;i++) va.push_back(std::numeric_limits<ll>::min());
+    for (auto i=0;i<32;i++) vb.push_back(std::numeric_limits<ll>::min());
+    va.push_back(_a[0]);
+    for (auto i=1,j=1;i<vaSz;i++) {
       while (j<_a.size() && (ll)(slope * (_a[j] - _a.front())) <= i) vb.push_back(_a[j++]);
-      assert(vb.size() > 0);
+      //while (j<_a.size() && (vb.size() <= 32 || (ll)(slope * (_a[j] - _a.front())) <= i)) vb.push_back(_a[j++]);
+      assert(vb.size() > 32);
       va.push_back(vb.back());
       vb.pop_back();
     }
+    for (auto i=0;i<32;i++) va.push_back(std::numeric_limits<int64_t>::max());
+    for (auto i=0;i<32;i++) vb.push_back(std::numeric_limits<int64_t>::max());
     std::sort(va.begin(), va.end());
     assert(std::is_sorted(vb.begin(), vb.end()));
-    lgScale = lg(va.size() - 1);
-    ll d = (va.back() - va.front()) >> lgScale;
+    lgScale = lg(vaSz - 1);
+    ll d = (aBack() - a()[0]) >> lgScale;
     dL.one_d(d, p, lg_q);
+    
+    // pre-compute max dist
+    maxDistF = 0;
+    maxDistB = 0;
+    for (auto i=0L;i<szA();i++) {
+      auto x = a()[i];
+      auto dist = i-(long)(slope * (x - _a.front()));
+      if (dist < maxDistB) maxDistB = dist;
+      if (dist > maxDistF) maxDistF = dist;
+    }
+    maxDistB = -maxDistB;
+    assert(maxDistB == 0);
   }
 
   std::vector<ll> va;
@@ -142,10 +167,8 @@ struct PruneStruct {
   unsigned lgScale;
   ll p;
   int lg_q;
-  auto a() { return &va[0]; };
-  auto szA() { return va.size(); };
-  auto b() { return &vb[0]; };
-  auto szB() { return vb.size(); };
+  int maxDistF;
+  int maxDistB;
 };
 
 struct OracleStruct {
@@ -175,7 +198,7 @@ struct OracleStruct {
 };
 
 using SearchFn = int64_t(const ll*, int64_t, ll);
-template < bool reverse=false, int roll=3>
+template < bool reverse=false, int roll=2>
 int64_t linSIMD(const ll* arr, const int64_t guessIx, const ll x) {
   auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
   auto ptr = arr;
@@ -209,7 +232,7 @@ int64_t linSIMD(const ll* arr, const int64_t guessIx, const ll x) {
   }
 }
 
-template <bool reverse=false,int n=12>
+template <bool reverse=false,int n=8>
 int64_t linUnroll(const ll* a, int64_t m, ll k) {
   for (;;m = (reverse?m-n:m+n)) {
     for (int i = 0; i < n; i++) {
@@ -219,19 +242,47 @@ int64_t linUnroll(const ll* a, int64_t m, ll k) {
   }
 }
 
+template <bool reverse=false,int n=12>
+int64_t linUnroll2(const ll* a, int64_t m, ll k) {
+  for (;;m = (reverse?m-n:m+n)) {
+    if (reverse?!(a[m-n+1]<=k):!(a[m+n-1]>=k)) continue;
+    for (int i = 0; i < n; i++) {
+      assert(m+i < 1032); assert((m-i) > -32);
+      if (reverse?(a[m-i]<=k):(a[m+i]>=k)) return reverse?(m-i):(m+i);
+    }
+  }
+}
+
 template <int MIN_EQ_SZ, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
-auto bsLinT(const ll x, BinStruct& s) {
-  const ll* array = s.a();
-  auto leftIndex = 0;                                                               
-  auto n = s.szA();
+auto binLin(const ll* a,  int leftIndex, int n, const ll x) {
   while (n > MIN_EQ_SZ) {
     auto half = n / 2;
     n -= half;
-    leftIndex = array[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+    leftIndex = a[leftIndex + half] <= x ? leftIndex + half : leftIndex;
   }
   auto guess = leftIndex + n/2;
-  if (array[guess] < x) return array[baseForwardSearch(array,guess+1,x)];
-  else return array[baseBackwardSearch(array,guess,x)];
+  if (a[guess] < x) return baseForwardSearch(a,guess+1,x);
+  else return baseBackwardSearch(a,guess,x);
+}
+
+template <int MIN_EQ_SZ, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto bsLinT(const ll x, BinStruct& s) {
+  return s.a()[binLin<MIN_EQ_SZ, baseForwardSearch, baseBackwardSearch>(s.a(), 0, s.szA(), x)];
+}
+
+template <int MIN_EQ_SZ, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto bsLinT2(const ll x, BinStruct& s) {
+  auto n = s.szA();
+  auto a = s.a();
+  auto l = 0L;
+  for (auto i = 0L; i < s.n_bs; i++) {
+    auto half = n/2;
+    n -= half;
+    l = a[l+half] <= x ? l+half : l;
+  };
+  auto guess = l + n/2;
+  if (a[guess] < x) return a[baseForwardSearch(a,guess+1,x)];
+  return a[baseBackwardSearch(a,guess,x)];
 }
 
 auto oracle(const ll y, OracleStruct& s) {
@@ -281,6 +332,152 @@ auto ps(const ll y, PruneStruct& s) {
   return b[i];
 }
 
+template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps2(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  if (a[m] > y) {
+    m = baseBackwardSearch(a,m-1,y);
+    if (a[m] == y) return a[m];
+  } else {
+    m = baseForwardSearch(a,m,y);
+    if (a[m] == y) return a[m];
+  }
+  auto b = s.b();
+  return b[baseForwardSearch(b, 0, y)];
+}
+
+template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps3(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  if (a[m] > y) {
+    m = baseBackwardSearch(a,m-1,y);
+    if (a[m] == y) return a[m];
+  } else {
+    m = baseForwardSearch(a,m,y);
+    if (a[m] == y) return a[m];
+  }
+  auto b = s.b();
+  auto m2 = s.szB() / 2;
+  if (b[m2] > y) return b[baseBackwardSearch(b,m2-1,y)]; 
+  return b[baseForwardSearch(b, m2, y)];
+}
+
+template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps4(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  if (a[m] > y) {
+    m = linUnroll<true>(a,m-1,y);
+    if (a[m] == y) return a[m];
+  } else {
+    m = linUnroll(a,m,y);
+    if (a[m] == y) return a[m];
+  }
+  auto b = s.b();
+  return b[binLin<512,baseForwardSearch,baseBackwardSearch>(b,0,s.szB(),y)];
+}
+
+template <SearchFn* sF, SearchFn* sB, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps5(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  assert(a[m] <= y);
+  m = sF(a,m,y);
+  if (a[m] == y) return a[m];
+  auto b = s.b();
+  assert(s.szA() / s.szB() == 4);
+  auto m2 = m >> 2;
+  if (b[m2] > y) return b[baseBackwardSearch(b,m2-1,y)]; 
+  return b[baseForwardSearch(b, m2, y)];
+}
+
+template <int k, SearchFn* sF, SearchFn* sB, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps6(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  ll m;
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  for (auto i=0;i<k;i++) if (a[m+i] == y) return a[m+i];
+  m = sF(a,m+k,y);
+  if (a[m] == y) return a[m];
+
+  auto b = s.b();
+  assert(s.szA()/s.szB() == 4);
+  auto m2 = m >> 2;
+  if (b[m2] > y) return b[baseBackwardSearch(b,m2-1,y)]; 
+  return b[baseForwardSearch(b, m2, y)];
+}
+
+template <int k, SearchFn* sF, SearchFn* sB, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps7(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  ll m;
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  for (auto i=0;i<k;i++) if (a[m+i] == y) return a[m+i];
+  auto b = s.b();
+  assert(s.szA()/s.szB() == 4);
+  auto m2 = m >> 2;
+  if (b[m2] > y) m2 = b[baseBackwardSearch(b,m2-1,y)]; 
+  else m2 = b[baseForwardSearch(b, m2, y)];
+  if (m2 == y) return m2;
+  else return a[sF(a,m+k,y)];
+}
+
 int main(int argc, char *argv[]) {
   using std::cin; using std::istream_iterator;
   constexpr int seed = 42;
@@ -296,26 +493,44 @@ int main(int argc, char *argv[]) {
   //    benchmark<N_RUNS, IntStruct, is2>( \
   //      "bsLin", testKeys, testIndexes, isS)); } while (0);
 
+//#define RUN_IS \
+//  do { IntStruct isS(input); \
+//  tests.emplace_back( \
+//      benchmark<IntStruct, is2<linSIMD, linSIMD<true>>>( \
+//        "isSIMD", testKeys, testIndexes, isS)); } while (0);
 #define RUN_IS \
-  do { IntStruct isS(input); \
+  do { PruneStruct isS(input); \
   tests.emplace_back( \
-      benchmark<IntStruct, is2<linSIMD, linSIMD<true>>>( \
-        "isSIMD", testKeys, testIndexes, isS)); } while (0);
+      benchmark<PruneStruct, ps5<linUnroll<false,4>, linUnroll<true,4>,linUnroll, linUnroll<true>>>( \
+        "ps", testKeys, testIndexes, isS)); } while (0);
+//      benchmark<PruneStruct, ps5<linUnroll<false,5>, linUnroll<true,5>,linSIMD, linSIMD<true>>>( \
+//        "ps5", testKeys, testIndexes, isS)); } while (0);
 #define RUN_BS \
   do { BinStruct bsS(input); \
   tests.emplace_back( \
-      benchmark<BinStruct, bsLinT<32, linUnroll, linUnroll<true>>>( \
-        "bsSIMD", testKeys, testIndexes, bsS)); } while (0);
+      benchmark<BinStruct, bsLinT2<32, linUnroll, linUnroll<true>>>( \
+        "bs4", testKeys, testIndexes, bsS)); } while (0);
+//  do { BinStruct bsS(input); \
+//  tests.emplace_back( \
+//      benchmark<BinStruct, bsLinT<32, linUnroll, linUnroll<true>>>( \
+//        "bsSIMD", testKeys, testIndexes, bsS)); } while (0);
 #define RUN_OS \
   do { OracleStruct osS(input, testIndexes); \
     tests.emplace_back( \
       benchmark<OracleStruct, oracle>( \
         "os", testKeys, testIndexes, osS)); } while (0);
 #define RUN_IS2 \
-  do { PruneStruct isS(input); \
+  do { IntStruct isS(input); \
   tests.emplace_back( \
-      benchmark<PruneStruct, ps>( \
-        "ps", testKeys, testIndexes, isS)); } while (0);
+      benchmark<IntStruct, is2<linSIMD, linSIMD<true>>>( \
+        "is", testKeys, testIndexes, isS)); } while (0);
+//  do { PruneStruct isS(input); \
+//  tests.emplace_back( \
+//      benchmark<PruneStruct, ps6<2,linUnroll<false,4>, linUnroll<true,4>,linSIMD, linSIMD<true>>>( \
+//        "ps6", testKeys, testIndexes, isS)); } while (0);
+//      benchmark<PruneStruct, ps7<2,linUnroll<false,2>, linUnroll<true,2>,linUnroll<false,12>, linUnroll<true,12>>>( \
+//        "ps7", testKeys, testIndexes, isS)); } while (0);
+//
 
   int nNums;
   cin >> nNums;
