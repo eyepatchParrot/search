@@ -9,7 +9,7 @@ LIB=-I$(HOME)/include -L$(HOME)/lib
 
 #	./p2iis 10 -1 < input/um_uniform_1m.txt
 #	./r2iis 10 -1 < input/um_uniform_1m.txt
-.PHONY: profile debug p2iis r2iis d_lin lin p2ibs r2ibs p2ios
+.PHONY: profile debug p2iis r2iis d_lin lin p2ibs r2ibs p2ios p1is
 profile: p2iis r2iis input/uniform.1000.20
 	./p2iis 10 -1 < input/uniform.1000.20
 	./r2iis 10 -1 < input/uniform.1000.20
@@ -36,19 +36,19 @@ r2ibs: search.cc util.h
 	./$@ < input/uniform.1000.20
 
 p1is: search.cc util.h
-	$(PROFILE) -DIS=1 $< -o $@
+	$(PROFILE) -DN_RUNS=2000000 -DIS=1 $< -o $@
 
 p1bs: search.cc util.h
 	$(PROFILE) -DBS=1 $< -o $@
 
 p2iis: search.cc util.h
-	$(PROFILE) -DIS=1 -DIS2=2 $< -o $@
+	$(PROFILE) -DN_RUNS=5000 -DIS=1 -DIS2=2 $< -o $@
 
 p2iiu: search.cc util.h
 	$(PROFILE) -DNSORT -DIS=1 -DIS2=2 $< -o $@
 
 r2iis: search.cc util.h
-	$(PROFILE) -DIS=2 -DIS2=1 $< -o $@
+	$(PROFILE) -DN_RUNS=5000 -DIS=2 -DIS2=1 $< -o $@
 
 puk.%: input/uniform.1000.1
 	$* < $<
