@@ -47,6 +47,41 @@ static void BM_Search(benchmark::State& state) {
 #define R RangeMultiplier(3)->Ranges({{2,40}})
 
 template < bool reverse=false, int roll=1>
+int linSIMD2(const V* arr, const int guessIx, const V x) {
+  auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
+  auto ptr = arr;
+  auto i = guessIx;
+	int misalignment;
+	for (int j = 0; j < 4*roll; j++) {
+    if (j == 4*(roll-1)) misalignment = ((uintptr_t)(ptr+i) & 31)/sizeof(V);
+    if (reverse? (arr[i-j] <= x) : arr[i+j] >= x) return reverse? i-j : i+j;
+  }
+  i = reverse? (i-4*(roll-1) - misalignment) : i + 4*roll - misalignment;
+  // 32-aligned main loop                                                          
+  for (;;i = reverse?(i-16) : i+16) {
+    auto sign = reverse?-1:1;
+    auto av0 = _mm256_load_si256((__m256i*)(ptr + i + sign*0));
+    auto av1 = _mm256_load_si256((__m256i*)(ptr + i + sign*4));
+    auto av2 = _mm256_load_si256((__m256i*)(ptr + i + sign*8));
+    auto av3 = _mm256_load_si256((__m256i*)(ptr + i + sign*12));
+    auto cmp3 = reverse? _mm256_cmpgt_epi64(vecXX, av3) :  _mm256_cmpgt_epi64(av3, vecXX);
+    auto msk3 = _mm256_movemask_epi8(cmp3);
+    if (!msk3) continue;
+    auto cmp0 = reverse? _mm256_cmpgt_epi64(vecXX, av0) :   _mm256_cmpgt_epi64(av0,vecXX );
+    auto cmp1 = reverse? _mm256_cmpgt_epi64(vecXX, av1) :   _mm256_cmpgt_epi64(av1,vecXX );
+    auto cmp2 = reverse? _mm256_cmpgt_epi64(vecXX, av2) :   _mm256_cmpgt_epi64(av2,vecXX );
+    auto msk0 = _mm256_movemask_epi8(cmp0);
+    auto msk1 = _mm256_movemask_epi8(cmp1);
+    auto msk2 = _mm256_movemask_epi8(cmp2);
+    if (msk0) return reverse? (i + 4 - _lzcnt_u32(msk0) / 8 - 0 * 4) : i + _tzcnt_u32(msk0) / 8 + 0 * 4;
+    if (msk1) return reverse? (i + 4 - _lzcnt_u32(msk1) / 8 - 1 * 4) : i + _tzcnt_u32(msk1) / 8 + 1 * 4;
+    if (msk2) return reverse? (i + 4 - _lzcnt_u32(msk2) / 8 - 2 * 4) : i + _tzcnt_u32(msk2) / 8 + 2 * 4;
+    if (msk3) return reverse? (i + 4 - _lzcnt_u32(msk3) / 8 - 3 * 4) : i + _tzcnt_u32(msk3) / 8 + 3 * 4;
+  }
+}
+BENCHMARK_TEMPLATE(BM_Search, linSIMD2)->R;
+BENCHMARK_TEMPLATE(BM_Search, linSIMD2<false,3>)->R;
+template < bool reverse=false, int roll=1>
 int linSIMD(const V* arr, const int guessIx, const V x) {
   auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
   auto ptr = arr;
@@ -78,8 +113,8 @@ int linSIMD(const V* arr, const int guessIx, const V x) {
   }
 }
 BENCHMARK_TEMPLATE(BM_Search, linSIMD)->R;
-BENCHMARK_TEMPLATE(BM_Search, linSIMD<false,2>)->R;
 BENCHMARK_TEMPLATE(BM_Search, linSIMD<false,3>)->R;
+
 
 template <int n,bool reverse=false>
 int linUnroll(const V* a, int m, V k) {
