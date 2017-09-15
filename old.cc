@@ -676,3 +676,171 @@ int isLoop(const ll y, IntStruct& s) {
   }
 #undef N
 }
+
+template <bool reverse=false,int n=12>
+int64_t linUnroll2(const ll* a, int64_t m, ll k) {
+  // does a check to see if it can skip the whole group
+  for (;;m = (reverse?m-n:m+n)) {
+    if (reverse?!(a[m-n+1]<=k):!(a[m+n-1]>=k)) continue;
+    for (int i = 0; i < n; i++) {
+      assert(m+i < 1032); assert((m-i) > -32);
+      if (reverse?(a[m-i]<=k):(a[m+i]>=k)) return reverse?(m-i):(m+i);
+    }
+  }
+}
+
+// check for equality for the first k items before doing a LEQ check
+template <int k, SearchFn* sF, SearchFn* sB, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps6(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  ll m;
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  for (auto i=0;i<k;i++) if (a[m+i] == y) return a[m+i];
+  m = sF(a,m+k,y);
+  if (a[m] == y) return a[m];
+
+  auto b = s.b();
+  assert(s.szA()/s.szB() == 4);
+  auto m2 = m >> 2;
+  if (b[m2] > y) return b[baseBackwardSearch(b,m2-1,y)]; 
+  return b[baseForwardSearch(b, m2, y)];
+}
+
+// use assignment to hoist out the checks
+template <int k, SearchFn* sF, SearchFn* sB, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps7(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  ll m;
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  for (auto i=0;i<k;i++) if (a[m+i] == y) return a[m+i];
+  auto b = s.b();
+  assert(s.szA()/s.szB() == 4);
+  auto m2 = m >> 2;
+  if (b[m2] > y) m2 = b[baseBackwardSearch(b,m2-1,y)]; 
+  else m2 = b[baseForwardSearch(b, m2, y)];
+  if (m2 == y) return m2;
+  else return a[sF(a,m+k,y)];
+}
+
+auto ps(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  if (a[m] > y) {
+    while (m != 0 && a[m] > y) m--;
+    if (a[m] == y) return a[m];
+  } else {
+    while (m < r && a[m] < y) m++;
+    if (a[m] == y) return a[m];
+  }
+  auto b = s.b();
+  auto i=0;
+  for (;i<s.szB() && b[i] < y;i++) ;
+  return b[i];
+}
+
+template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps2(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  if (a[m] > y) {
+    m = baseBackwardSearch(a,m-1,y);
+    if (a[m] == y) return a[m];
+  } else {
+    m = baseForwardSearch(a,m,y);
+    if (a[m] == y) return a[m];
+  }
+  auto b = s.b();
+  return b[baseForwardSearch(b, 0, y)];
+}
+
+template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps3(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  if (a[m] > y) {
+    m = baseBackwardSearch(a,m-1,y);
+    if (a[m] == y) return a[m];
+  } else {
+    m = baseForwardSearch(a,m,y);
+    if (a[m] == y) return a[m];
+  }
+  auto b = s.b();
+  auto m2 = s.szB() / 2;
+  if (b[m2] > y) return b[baseBackwardSearch(b,m2-1,y)]; 
+  return b[baseForwardSearch(b, m2, y)];
+}
+
+template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto ps4(const ll y, PruneStruct& s) {
+  auto a = s.a();
+  auto l = 0UL, r = s.szA() - 1;
+  assert(r - l >= 0); // assume non-empty vector
+  auto lgScale = s.lgScale;
+  auto n = (r-l)*((y-a[l]) >> lgScale);
+  auto m = l + dL.divFit(n,s.p, s.lg_q);
+
+  assert(m <= r);
+  assert(m >= l);
+  assert(a[m] >= a[l]);
+
+  if (a[m] > y) {
+    m = linUnroll<true>(a,m-1,y);
+    if (a[m] == y) return a[m];
+  } else {
+    m = linUnroll(a,m,y);
+    if (a[m] == y) return a[m];
+  }
+  auto b = s.b();
+  return b[binLin<512,baseForwardSearch,baseBackwardSearch>(b,0,s.szB(),y)];
+}
+
+template <int MIN_EQ_SZ, SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
+auto bsLinT(const ll x, BinStruct& s) {
+  return s.a()[binLin<MIN_EQ_SZ, baseForwardSearch, baseBackwardSearch>(s.a(), 0, s.szA(), x)];
+}
+

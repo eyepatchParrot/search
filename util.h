@@ -28,6 +28,7 @@
 #else
 #define T1(X,Y,Z,W)
 #endif
+
 #if IS == 2
 #define T2(X,Y,Z,W) X
 #elif BS == 2
@@ -39,6 +40,7 @@
 #else
 #define T2(X,Y,Z,W)
 #endif
+
 #if IS == 3
 #define T3(X,Y,Z,W) X
 #elif BS == 3

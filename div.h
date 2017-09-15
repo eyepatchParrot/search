@@ -30,6 +30,8 @@ struct DivLut {
         d /= 2;
         lg_q++;
       }
+
+      // don't recalculate what we've already calculated
       if (pT[-1+d] != 0) {
         pT[-1+i] = pT[-1+d];
         lg_qT[-1+i] = lg_qT[-1+d] + lg_q;
