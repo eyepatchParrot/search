@@ -110,24 +110,51 @@ struct DivLut {
   int lg_qT[N];
 };
 
+template <bool do128 = false>
 class DivLut4 {
   using Numerator = unsigned long;
   using Denominator = int;
+  using uint128_t = __uint128_t;
   constexpr static int lg_TableSize = 8;
   constexpr static int TableSize = 1 << lg_TableSize;
   class Divisor {
+    public:
     Numerator p;
     Denominator lg_q;
     public:
     constexpr Divisor() : p(0), lg_q(0) {}
     constexpr Divisor(Numerator d) :
-      p(1 == d ? (~0) : ((1UL << 63) + d - 1) / d * 2), // ceiling 2^k/d
-      lg_q(0) { } // k-64 = 0
+      p(0), // ceiling 2^k/d
+      lg_q(0) {
+        if (do128) {
+          if (1 == d) {
+            p = ~0;
+          } else {
+            auto mask = (uint128_t)1 << 127;
+            auto t = (mask + d - 1) / d;
+            lg_q = 63; // p * 2^127 = p * 2^63 * 2^64
+            if (t == 0) return;
+            while (0 == (t & mask)) {
+              t <<= 1;
+              lg_q++;
+            }
+            t += ~0UL;
+            t >>= 64;
+            lg_q -= 64;
+            assert(t & ~0UL != 0);
+            assert(d < 1UL << 63); // This would cause lg_q to be negative I think.
+            p = static_cast<Numerator>(t);
+          }
+        } else {
+          p = (1 == d ? (~0) : ((1UL << 63) + d - 1) / d * 2);
+        }
+      } // k-64 = 0
     auto operator*(Numerator n) {
-      return ((__uint128_t)(n) * p) >> 64 >> lg_q;
+      auto hi = (uint64_t)(((uint128_t)n * p) >> 64);
+      return (Numerator)(hi >> lg_q);
     }
     auto operator>>(int k) const {
-      Divisor d = *this;
+      auto d = *this;
       d.lg_q += k;
       return d;
     }
@@ -137,7 +164,7 @@ class DivLut4 {
 public:
   constexpr DivLut4() {
     for (auto i = 1; i < TableSize; i++) {
-      t[i] = Divisor(i);
+      t[i] = i;
     }
   }
   auto divisor(Numerator d) const {
@@ -151,19 +178,19 @@ public:
   }
 };
 
-DivLut4 t;
 using namespace std;
 int main() {
   const int LG_N = 8;
   const int N = 1 << LG_N;
 
-  DivLut<8> dL;
+  //DivLut<8> dL;
+  DivLut4<true> dL;
   //DivLut3<8> dL3;
-	DivLut4 dL3;
+	DivLut4<false> dL3;
 
 //#ifndef NDEBUG
   // TODO need to test on large numbers
-  const int N_TEST = 1 << 20;
+  const int N_TEST = 1 << 10;
   int max2 = 0;
   int sum2 = 0;
   int cnt2 = 0;
@@ -176,8 +203,9 @@ int main() {
       l n = k;
       //l n = rand();
       l r = n / d;
-      l r2 = dL.div(n, d);
-      l r3 = t.divisor(d) * n;
+      //l r2 = dL.div(n, d);
+      l r3 = dL.divisor(d) * n;
+      l r2 = dL3.divisor(d) * n;
       int d2 = (int)r - (int)r2;
       max2 = max(max2, d2);
       sum2 += d2;
@@ -191,7 +219,8 @@ int main() {
         cnt3++;
       }
       if (d3 > d2) {
-        printf("n/d = %lu/%lu\n", n,d);
+        auto dd = dL.divisor(d);
+        printf("n/d = %lu/%d = %lu ~ %lu = n * %lx / 2^%d\n", n,d, r, dd * n, dd.p, dd.lg_q);
       }
     }
   }

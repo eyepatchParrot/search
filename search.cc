@@ -22,6 +22,7 @@
 typedef uint64_t ll;
 
 DivLut<8> dL;
+DivLut4 dL4;
 
 struct RunStats {
   int sumSteps1, sumSteps2;
@@ -107,6 +108,9 @@ struct IntStruct {
     ll d = (_a.back() - _a.front()) >> lgScale; // consider getting rid of this
     dL.one_d(d, p, lg_q);
     p2 = (p >> lgScale) * (szA() - 1);
+    p3 = p2 >> lg_q;
+    d4 = DivLut4::Divisor(d);
+    d4.p = (d4.p >> lgScale) * (szA() - 1);
   }
 
   unsigned lgScale;
@@ -117,6 +121,8 @@ struct IntStruct {
   ll yLS;
   ll p; int lg_q;
   ll p2; int lg_q2;
+  ll p3;
+  DivLut4::Divisor d4;
   std::vector<ll> v;
 };
 
@@ -338,14 +344,30 @@ auto is2(const ll y, IntStruct& s) {
 template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
 auto is3(const ll y, IntStruct& s) {
   const ll* a = s.a();
-  ll l = 0, r = s.szA() - 1;
-  assert(r - l >= 0); // assume non-empty vector
+  ll l = 0;
+  assert(s.szA() - l >= 0); // assume non-empty vector
   ll yL = a[l];
   //ll n = (r-l)*((y-yL) >> lgScale);
   //ll m = l + dL.divFit(n,s.p, s.lg_q);
   ll m = l + dL.divFit(y-yL, s.p2, s.lg_q);
 
-  assert(m <= r); assert(m >= l);
+  assert(m <= s.szA()); assert(m >= l);
+  assert(a[m] >= a[l]); // we know this because n would've been less than d
+  if (a[m] > y) return a[baseBackwardSearch(a,m-1,y)];
+  return a[baseForwardSearch(a,m,y)];
+}
+
+template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch, bool dl4=false>
+auto is4(const ll y, IntStruct& s) {
+  const ll* a = s.a();
+  ll l = 0;
+  assert(s.szA() - l >= 0); // assume non-empty vector
+  ll yL = a[l];
+  //ll n = (r-l)*((y-yL) >> lgScale);
+  //ll m = l + dL.divFit(n,s.p, s.lg_q);
+  ll m = l + (dl4 ? s.d4 * (y-yL) : (((__uint128_t)(y-yL)*s.p3) >> 64));
+
+  assert(m <= s.szA()); assert(m >= l);
   assert(a[m] >= a[l]); // we know this because n would've been less than d
   if (a[m] > y) return a[baseBackwardSearch(a,m-1,y)];
   return a[baseForwardSearch(a,m,y)];
@@ -391,30 +413,16 @@ int main(int argc, char *argv[]) {
   //    benchmark<N_RUNS, IntStruct, is2>( \
   //      "bsLin", testKeys, testIndexes, isS)); } while (0);
 
-#if IS_T == 1
 #define RUN_IS \
   do { IntStruct isS(input); \
   tests.emplace_back( \
-      benchmark<IntStruct, is2<linUnroll<false,3>, linUnroll<true,2>>>( \
-        "is", testKeys, testIndexes, isS)); } while (0);
-#elif IS_T == 2
-#define RUN_IS \
-  do { IntStruct isS(input); \
-  tests.emplace_back( \
-      benchmark<IntStruct, is2<linSIMD, linSIMD<true>>>( \
-        "isLin", testKeys, testIndexes, isS)); } while (0);
-#elif IS_T == 3
-#define RUN_IS \
-  do { PruneStruct isS(input); \
-  tests.emplace_back( \
-      benchmark<PruneStruct, ps5<linUnroll<false,4>, linUnroll<true,4>,linUnroll<false,1>, linUnroll<true,1>>>( \
-        "ps", testKeys, testIndexes, isS)); } while (0);
-#endif
+      benchmark<IntStruct, is4<linSIMD, linSIMD<true>>>( \
+        "is4", testKeys, testIndexes, isS)); } while (0);
 #define RUN_IS2 \
   do { IntStruct isS(input); \
   tests.emplace_back( \
-      benchmark<IntStruct, is3<linSIMD, linSIMD<true>>>( \
-        "is3", testKeys, testIndexes, isS)); } while (0);
+      benchmark<IntStruct, is4<linSIMD, linSIMD<true>, true>>( \
+        "isDL", testKeys, testIndexes, isS)); } while (0);
 #if BS_T == 1
 #define RUN_BS \
   do { BinStruct bsS(input); \
