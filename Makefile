@@ -1,6 +1,6 @@
 #CC=g++
 #CC=clang++
-CC=~/llvm/bin/clang++
+CC=~/llvm2/bin/clang++
 OPT=-Wall -std=c++1z -fno-omit-frame-pointer -ffast-math -march=native -ggdb
 PROFILE=$(CC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(CC) $(OPT)
@@ -89,10 +89,11 @@ asm: search.cc
 	$(PROFILE) $@.s -o $@
 
 lin: lin.cc
-	$(PROFILE) -o $@ $(LIB) -fprofile-instr-generate $< -lbenchmark -lpthread 
-	./lin
-	llvm-profdata merge -output=default.profdata default.profraw
-	$(PROFILE) -o $@ $(LIB) -fprofile-instr-use $< -lbenchmark -lpthread
+	#$(PROFILE) -o $@ $(LIB) -fprofile-instr-generate $< -lbenchmark -lpthread 
+	#./lin
+	#llvm-profdata merge -output=default.profdata default.profraw
+	#$(PROFILE) -o $@ $(LIB) -fprofile-instr-use $< -lbenchmark -lpthread
+	$(PROFILE) -o $@ $(LIB) $< -lbenchmark -lpthread
 	./lin --benchmark_out_format=csv --benchmark_out=lin.csv
 
 d_lin: lin.cc
