@@ -92,4 +92,41 @@ struct DivLut {
   int lg_qT[N];
 };
 
+class DivLut4 {
+  using Numerator = unsigned long;
+  using Denominator = int;
+  constexpr static int lg_TableSize = 8;
+  constexpr static int TableSize = 1 << lg_TableSize;
+
+public:
+  class Divisor {
+    public:
+    Numerator p;
+    Denominator lg_q;
+    constexpr Divisor() : p(0), lg_q(0) {}
+    constexpr Divisor(Numerator d) :
+      p(1 == d ? (~0) : ((1UL << 63) + d - 1) / d * 2), // ceiling 2^k/d
+      lg_q(0) { } // k-64 = 0
+    friend Numerator operator/(__uint128_t n, const Divisor& d) { return n * d.p >> 64; }
+    auto operator>>(int k) const {
+      auto d = *this;
+      d.lg_q += k;
+      return d;
+    }
+  };
+
+private:
+  std::array<Divisor, TableSize> t;
+public:
+
+  constexpr DivLut4() { for (auto i = 1; i < TableSize; i++) t[i] = i; }
+  Divisor operator[](Numerator d) const {
+    if (d > TableSize) {
+      const Denominator k = lgl_flr(d) - lg_TableSize;
+      return t[d >> k] >> k;
+    } else {
+      return t[d]; 
+    }
+  }
+};
 #endif

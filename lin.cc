@@ -79,8 +79,8 @@ int linSIMD2(const V* arr, const int guessIx, const V x) {
     if (msk3) return reverse? (i + 4 - _lzcnt_u32(msk3) / 8 - 3 * 4) : i + _tzcnt_u32(msk3) / 8 + 3 * 4;
   }
 }
-BENCHMARK_TEMPLATE(BM_Search, linSIMD2)->R;
-BENCHMARK_TEMPLATE(BM_Search, linSIMD2<false,3>)->R;
+//BENCHMARK_TEMPLATE(BM_Search, linSIMD2)->R;
+//BENCHMARK_TEMPLATE(BM_Search, linSIMD2<false,3>)->R;
 template < bool reverse=false, int roll=1>
 int linSIMD(const V* arr, const int guessIx, const V x) {
   auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
@@ -112,8 +112,8 @@ int linSIMD(const V* arr, const int guessIx, const V x) {
     if (msk3) return reverse? (i + 4 - _lzcnt_u32(msk3) / 8 - 3 * 4) : i + _tzcnt_u32(msk3) / 8 + 3 * 4;
   }
 }
-BENCHMARK_TEMPLATE(BM_Search, linSIMD)->R;
-BENCHMARK_TEMPLATE(BM_Search, linSIMD<false,3>)->R;
+//BENCHMARK_TEMPLATE(BM_Search, linSIMD)->R;
+//BENCHMARK_TEMPLATE(BM_Search, linSIMD<false,3>)->R;
 
 
 template <int n,bool reverse=false>
@@ -126,7 +126,7 @@ int linUnroll(const V* a, int m, V k) {
   }
 }
 
-//BENCHMARK_TEMPLATE(BM_Search, linUnroll<8>)->R;
+BENCHMARK_TEMPLATE(BM_Search, linUnroll<8>)->R;
 //BENCHMARK_TEMPLATE(BM_Search, linUnroll<4>)->R;
 //BENCHMARK_TEMPLATE(BM_Search, linUnroll<8,true>,true)->R;
 

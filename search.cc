@@ -357,15 +357,13 @@ auto is3(const ll y, IntStruct& s) {
   return a[baseForwardSearch(a,m,y)];
 }
 
-template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch, bool dl4=false>
+template <SearchFn* baseForwardSearch, SearchFn* baseBackwardSearch>
 auto is4(const ll y, IntStruct& s) {
+  constexpr ll l = 0;
+
   const ll* a = s.a();
-  ll l = 0;
   assert(s.szA() - l >= 0); // assume non-empty vector
-  ll yL = a[l];
-  //ll n = (r-l)*((y-yL) >> lgScale);
-  //ll m = l + dL.divFit(n,s.p, s.lg_q);
-  ll m = l + (dl4 ? s.d4 * (y-yL) : (((__uint128_t)(y-yL)*s.p3) >> 64));
+  ll m = l + (y-a[l]) / s.d4;
 
   assert(m <= s.szA()); assert(m >= l);
   assert(a[m] >= a[l]); // we know this because n would've been less than d
@@ -416,13 +414,13 @@ int main(int argc, char *argv[]) {
 #define RUN_IS \
   do { IntStruct isS(input); \
   tests.emplace_back( \
-      benchmark<IntStruct, is4<linSIMD, linSIMD<true>>>( \
-        "is4", testKeys, testIndexes, isS)); } while (0);
+      benchmark<IntStruct, is3<linSIMD<false>, linSIMD<true>>>( \
+        "is3", testKeys, testIndexes, isS)); } while (0);
 #define RUN_IS2 \
   do { IntStruct isS(input); \
   tests.emplace_back( \
-      benchmark<IntStruct, is4<linSIMD, linSIMD<true>, true>>( \
-        "isDL", testKeys, testIndexes, isS)); } while (0);
+      benchmark<IntStruct, is4<linSIMD, linSIMD<true>>>( \
+        "is4", testKeys, testIndexes, isS)); } while (0);
 #if BS_T == 1
 #define RUN_BS \
   do { BinStruct bsS(input); \

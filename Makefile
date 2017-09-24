@@ -4,7 +4,7 @@ CC=~/llvm2/bin/clang++
 OPT=-Wall -std=c++1z -fno-omit-frame-pointer -ffast-math -march=native -ggdb
 PROFILE=$(CC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(CC) $(OPT)
-BENCHMARKS=-DIS2=1 -DIS=2 -DIS_T=2
+BENCHMARKS=-DIS=1 -DIS2=2
 LIB=-I$(HOME)/include -L$(HOME)/lib 
 IS_T=2
 BS_T=2
@@ -41,8 +41,10 @@ p1is: search.cc util.h
 	$(PROFILE) -DIS_T=$(IS_T) -DIS=1 $< -o $@
 
 ui: search.cc util.h
-	$(PROFILE) -DNSORT -DIS_T=1 -DIS=1 $< -o $@
+	$(PROFILE) -DNSORT -DIS=1 $< -o $@
 
+ui2: search.cc util.h
+	$(PROFILE) -DNSORT -DIS2=1 $< -o $@
 uil: search.cc util.h
 	$(PROFILE) -DN_RUNS=1000000 -DNSORT -DIS_T=2 -DIS=1 $< -o $@
 
@@ -78,7 +80,7 @@ puk.%: input/uniform.1000.1
 	$* < $<
 
 debug: search.cc util.h
-	$(DEBUG) $(BENCHMARKS) search.cc -o $@
+	$(DEBUG) $(BENCHMARKS) -DN_RUNS=50 search.cc -o $@
 	gdb ./$@
 
 div: div.cc
