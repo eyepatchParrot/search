@@ -34,12 +34,15 @@ struct TestStats {
 
 template <class S>
 TestStats benchmark(
-    const std::string& name,
     const std::vector<ll>& input,
     const std::vector<int>& indexes,
     S& search) {
   constexpr int nRuns = N_RUNS;
-  auto ts = TestStats{name};
+  auto ts = TestStats{search.name()};
+
+  // get verification info
+  auto expSum = 0UL, valSum = 0UL;
+  for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += input[i];
 
   // vals is shuffled, so can't use it. Maybe shuffle indices and use that
   // next time
@@ -47,9 +50,6 @@ TestStats benchmark(
   for (int i = 0; i < vals.size(); i++)
     vals[i] = input[indexes[i]];
 
-  // get verification info
-  auto expSum = 0UL, valSum = 0UL;
-  for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
 
   for (int runIx = 0; runIx < nRuns; runIx++) {
     ll st = __rdtsc();
@@ -71,11 +71,10 @@ TestStats benchmark(
 
 template <class S>
 TestStats benchmark(
-    const std::string& name,
     const std::vector<ll>& input,
     const std::vector<int>& indexes) {
   S s(input);
-  return benchmark(name, input, indexes, s);
+  return benchmark(input, indexes, s);
 }
 
 using SearchFn = int64_t(const ll*, int64_t, ll);
@@ -195,6 +194,23 @@ class Binary {
     };
     return 0;
   }
+  std::string name() {
+    std::stringstream ss;
+    switch (f) {
+      case BsFn::BS_EQ:
+        ss << "bsEq"; break;
+      case BsFn::BS_LIN:
+        if (MIN_EQ_SZ == 1) {
+          ss << "bs";
+        } else {
+          ss << "bsLin_" << MIN_EQ_SZ;
+        }
+        break;
+      default:
+        ss << "???";
+    }
+    return ss.str();
+  }
 };
 
 enum IsFn {
@@ -202,6 +218,7 @@ enum IsFn {
  ,IS_RECURSE
 };
 template <IsFn f = IS_LIN
+         ,int nIter = 1
          ,SearchFn* baseForwardSearch = linSIMD
          ,SearchFn* baseBackwardSearch = linSIMD<true>
          >
@@ -241,14 +258,24 @@ struct Interpolation {
   }
 
   auto isLin(const ll x) {
-    constexpr ll l = 0;
+    ll l = 0;
+    ll r = szA() - 1;
 
     const auto a = this->a();
-    assert(szA() - l >= 0); // assume non-empty vector
+    assert(r - l >= 0); // assume non-empty vector
     auto m = l + (x-a[l]) / d;
 
-    assert(m < szA()); assert(m >= l);
-    assert(a[m] >= a[l]); // we know this because n would've been less than d
+    for (int i = 1; i < nIter; i++) {
+      assert(m <= r); assert(m >= l);
+      if (a[m] <= x) l = m;
+      if (a[m] >= x) r = m;
+      // maybe test for equality
+      auto n = ((x-a[l]) >> lgScale) * (r-l);
+      auto d = tableDL[(a[r] - a[l]) >> lgScale];
+      m = l + n/d;
+      assert(m <= szA()); assert(m >= l);
+    }
+
     if (a[m] > x) return a[baseBackwardSearch(a,m-1,x)];
     return a[baseForwardSearch(a,m,x)];
   }
@@ -284,6 +311,18 @@ struct Interpolation {
     };
     return 0;
   }
+  std::string name() {
+    std::stringstream ss;
+    switch (f) {
+      case IsFn::IS_LIN:
+        ss << "isLin_" << nIter; break;
+      case IsFn::IS_RECURSE:
+        ss << "isRecurse"; break;
+      default:
+        ss << "is???"; break;
+    }
+    return ss.str();
+  }
 };
 
 class Oracle {
@@ -317,39 +356,43 @@ class Oracle {
     j = j >= i.size() ? 0 : j;
     return a[k] == x ? a[k] : -1;
   }
+  std::string name() { return "oracle"; }
 };
 
-// ./x [nRuns] [subsetSize]
+// ./x [outputLength] [subsetSize]
 int main(int argc, char *argv[]) {
   using std::cin; using std::istream_iterator;
   constexpr int seed = 42;
   
-  int nSamples = 10;
-  int nGets = -1;
-  if (1 < argc) std::stringstream(argv[1]) >> nSamples;
-  nSamples = nSamples < 0 ? std::numeric_limits<int>::max() : nSamples;
-  if (2 < argc) std::stringstream(argv[2]) >> nGets;
-
   int nNums;
   cin >> nNums;
   assert(nNums != 0);
   auto input = std::vector<ll>(istream_iterator<ll>(cin), istream_iterator<ll>());
-  if (nGets < 1) nGets = input.size();
+  int nGets = SUBSET_SIZE < 1 ? input.size() : SUBSET_SIZE;
 
   // permute the items
   std::vector<int> testIndexes(nGets);
-  std::iota(testIndexes.begin(), testIndexes.end(), 0);
-  std::shuffle(testIndexes.begin(), testIndexes.end(), std::mt19937{seed});
-
+  {
+    std::vector<int> allIndexes(input.size());
+    std::iota(allIndexes.begin(), allIndexes.end(), 0);
+    std::shuffle(allIndexes.begin(), allIndexes.end(), std::mt19937{seed});
+    std::copy_n(allIndexes.begin(), nGets, testIndexes.begin());
+  }
   Oracle o(input, testIndexes);
-  std::vector<TestStats> tests = { 
-    benchmark<Binary<BS_EQ,1> >   ("bs", input, testIndexes)
-    ,benchmark<Binary<BS_LIN,1> > ("bs", input, testIndexes)
-    ,benchmark<Binary<BS_LIN,32> >("bsLin", input, testIndexes)
-    ,benchmark<Interpolation<IS_RECURSE,linUnroll,linUnroll<true>>>("isRecurse", input, testIndexes)
-    ,benchmark<Interpolation<>>   ("isLin", input, testIndexes)
-    ,benchmark            ("oracle", input, testIndexes, o)
-  };
+
+  std::vector<TestStats> tests;
+  for (int i = 1; i < argc; i++) {
+    TestStats ts; 
+    std::string s = argv[i];
+    if (s == "bsEq") ts = benchmark<Binary<BS_EQ>>(input,testIndexes);
+    else if (s == "bs") ts = benchmark<Binary<BS_LIN,1>>(input,testIndexes);
+    else if (s == "bsLin_32") ts = benchmark<Binary<BS_LIN,32>>(input,testIndexes);
+    else if (s == "isRecurse") ts = benchmark<Interpolation<IS_RECURSE,-1,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "isLin_1") ts = benchmark<Interpolation<>>(input, testIndexes);
+    else if (s == "isLin_2") ts = benchmark<Interpolation<IS_LIN,2>>(input, testIndexes);
+    else if (s == "oracle") ts = benchmark(input, testIndexes,o);
+    tests.push_back(ts);
+  }
 
   // Set-up the headers and organize data
   bool first = true;
@@ -361,12 +404,11 @@ int main(int argc, char *argv[]) {
     first = false;
     assert(t.cyclesByIx.size() == N_RUNS);
   }
-  for (int i = 0; i < N_RUNS && i < nSamples; i++) {
+  for (int i = 0; i < N_RUNS && (N_SAMPLES < 0 ? true : i < N_SAMPLES); i++) {
     first = true;
     printf("\n");
     for (auto& ts : tests) {
       printf("%s%.3f", true != first ? "," : "", std::get<0>(ts.cyclesByIx[i]) / (double)testIndexes.size());
-//      printf("%s%ld", true != first ? "," : "", std::get<0>(ts.cyclesByIx[i]) / (double)input.size());
       first = false;
     }
   }

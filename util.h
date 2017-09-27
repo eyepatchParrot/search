@@ -17,40 +17,12 @@
 #endif
 #endif
 
-#if IS == 1
-#define T1(X,Y,Z,W) X
-#elif BS == 1
-#define T1(X,Y,Z,W) Y
-#elif OS == 1
-#define T1(X,Y,Z,W) Z
-#elif IS2 == 1
-#define T1(X,Y,Z,W) W
-#else
-#define T1(X,Y,Z,W)
+#ifndef N_SAMPLES
+#define N_SAMPLES 10
 #endif
 
-#if IS == 2
-#define T2(X,Y,Z,W) X
-#elif BS == 2
-#define T2(X,Y,Z,W) Y
-#elif OS == 2
-#define T2(X,Y,Z,W) Z
-#elif IS2 == 2
-#define T2(X,Y,Z,W) W
-#else
-#define T2(X,Y,Z,W)
-#endif
-
-#if IS == 3
-#define T3(X,Y,Z,W) X
-#elif BS == 3
-#define T3(X,Y,Z,W) Y
-#elif OS == 3
-#define T3(X,Y,Z,W) Z
-#elif IS2 == 3
-#define T3(X,Y,Z,W) W
-#else
-#define T3(X,Y,Z,W)
+#ifndef SUBSET_SIZE
+#define SUBSET_SIZE -1
 #endif
 
 unsigned lg(unsigned x) {
