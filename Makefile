@@ -9,6 +9,7 @@ LIB=-I$(HOME)/include -L$(HOME)/lib
 IS_T=2
 BS_T=2
 FILE=input/uniform.1000.20
+N_RUNS=5000
 
 #	./p2iis 10 -1 < input/um_uniform_1m.txt
 #	./r2iis 10 -1 < input/um_uniform_1m.txt
@@ -68,13 +69,13 @@ p1bs: search.cc util.h
 	$(PROFILE) -DBS_T=$(BS_T) -DBS=1 $< -o $@
 
 p2iis: search.cc util.h
-	$(PROFILE) -DN_RUNS=5000 -DIS_T=2 -DIS=1 -DIS2=2 $< -o $@
+	$(PROFILE) -DN_RUNS=$(N_RUNS) -DIS_T=2 -DIS=1 -DIS2=2 $< -o $@
 
 p2iiu: search.cc util.h
 	$(PROFILE) -DNSORT -DIS=1 -DIS2=2 $< -o $@
 
 r2iis: search.cc util.h
-	$(PROFILE) -DN_RUNS=5000 -DIS=2 -DIS2=1 $< -o $@
+	$(PROFILE) -DN_RUNS=$(N_RUNS) -DIS=2 -DIS2=1 $< -o $@
 
 puk.%: input/uniform.1000.1
 	$* < $<
