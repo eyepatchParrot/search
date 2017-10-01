@@ -7,6 +7,7 @@
 #include <ctime>
 #include <immintrin.h>
 #include <iostream>
+#include <fstream>
 #include <iterator>
 #include <numeric>
 #include <sstream>
@@ -19,11 +20,12 @@
 #include "util.h"
 #include "div.h"
 
-typedef uint64_t ll;
+typedef int64_t ll;
 
 struct TestStats {
   std::string name;
   std::vector<std::tuple<ll, int> > cyclesByIx;
+  bool ok;
 
   void datum(ll dt) { cyclesByIx.emplace_back(dt, cyclesByIx.size()); }
   void datum(ll st, ll et) { datum(et-st); }
@@ -40,22 +42,22 @@ TestStats benchmark(
   constexpr int nRuns = N_RUNS;
   auto ts = TestStats{search.name()};
 
-  // get verification info
-  auto expSum = 0UL, valSum = 0UL;
-  for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += input[i];
 
   // vals is shuffled, so can't use it. Maybe shuffle indices and use that
   // next time
   std::vector<ll> vals(indexes.size());
   for (int i = 0; i < vals.size(); i++)
     vals[i] = input[indexes[i]];
-
+  
+  // get verification info
+  auto expSum = 0UL, valSum = 0UL;
+  for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
 
   for (int runIx = 0; runIx < nRuns; runIx++) {
     ll st = __rdtsc();
 
     for (int i = 0; i < vals.size(); i++) {
-      ERR("%d,%d,", i,indexes[i]);
+      //ERR("%d,%d,", i,indexes[i]);
       auto val = search(vals[i]);
       valSum += val;
       assert(val == vals[i]);
@@ -64,8 +66,7 @@ TestStats benchmark(
     ll et = __rdtsc();
     ts.datum(st, et);
   }
-  if (valSum != expSum) // check even when profiling
-    fprintf(stderr, "mess up %lu\n", vals.back());
+  ts.ok = valSum == expSum;
   return ts;
 }
 
@@ -297,7 +298,7 @@ struct Interpolation {
     //(tableDL <<= lgScale) *= (szA() - 1); 
     //tableDL <<= lgScale; 
     //auto d2 = tableDL[(_a.back() - _a.front()) >> lgScale];
-    d = (DivLut::Divisor((_a.back() - _a.front()) >>  lgScale) << lgScale) * (szA() - 1);
+    d = (DivLut::Divisor((_a.back() - _a.front()) >>  lgScale) << lgScale) / (szA() - 1);
     //auto d3 = d2;
   }
   ll operator()(const ll x) {
@@ -359,15 +360,19 @@ class Oracle {
   std::string name() { return "oracle"; }
 };
 
-// ./x [outputLength] [subsetSize]
+// ./x fileName [benchmarks ...]
 int main(int argc, char *argv[]) {
-  using std::cin; using std::istream_iterator;
+  using std::istream_iterator;
   constexpr int seed = 42;
+
+  std::cerr << argv[1] << '\n';
+
+  std::ifstream f(argv[1]);
   
   int nNums;
-  cin >> nNums;
+  f >> nNums;
   assert(nNums != 0);
-  auto input = std::vector<ll>(istream_iterator<ll>(cin), istream_iterator<ll>());
+  auto input = std::vector<ll>(istream_iterator<ll>(f), istream_iterator<ll>());
   int nGets = SUBSET_SIZE < 1 ? input.size() : SUBSET_SIZE;
 
   // permute the items
@@ -381,7 +386,7 @@ int main(int argc, char *argv[]) {
   Oracle o(input, testIndexes);
 
   std::vector<TestStats> tests;
-  for (int i = 1; i < argc; i++) {
+  for (int i = 2; i < argc; i++) {
     TestStats ts; 
     std::string s = argv[i];
     if (s == "bsEq") ts = benchmark<Binary<BS_EQ>>(input,testIndexes);
@@ -391,6 +396,8 @@ int main(int argc, char *argv[]) {
     else if (s == "isLin_1") ts = benchmark<Interpolation<>>(input, testIndexes);
     else if (s == "isLin_2") ts = benchmark<Interpolation<IS_LIN,2>>(input, testIndexes);
     else if (s == "oracle") ts = benchmark(input, testIndexes,o);
+    if (!ts.ok)
+      std::cerr << "mess up " << argv[1] << ' ' << s << '\n';
     tests.push_back(ts);
   }
 
