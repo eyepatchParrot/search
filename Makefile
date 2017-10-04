@@ -1,12 +1,11 @@
 #CC=g++
-#CC=clang++
-CC=~/llvm2/bin/clang++
+CC=clang++
 OPT=-Wall -std=c++1z -fno-omit-frame-pointer -ffast-math -march=native -ggdb
 PROFILE=$(CC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(CC) $(OPT)
 LIB=-I$(HOME)/include -L$(HOME)/lib 
 
-FILE=input/uniform.1000.20
+FILE=input/uniform.1000.8
 ifdef NSORT
 	DEFINES += -DNSORT
 endif
@@ -19,17 +18,19 @@ endif
 ifdef SUBSET_SIZE
 	DEFINES += -DSUBSET_SIZE=$(SUBSET_SIZE)
 endif
+#BENCHMARKS=bsEq bs bsLin_32 isRecurse isLin_1 isLin_2 oracle isSub
+BENCHMARKS=isFp isIDiv isLin_1 bs
 
-.PHONY: run search debug d_lin lin
+.PHONY: run search debug d_lin lin splines
 run: search $(FILE)
-	./search bsEq bsLin_1 bsLin_32 isRecurse isLin_1 isLin_2 oracle < $(FILE)
+	./search $(FILE) $(BENCHMARKS)
 
 search: search.cc util.h div.h
 	$(PROFILE) $(DEFINES) $< -o $@
 
 debug: search.cc util.h
 	$(DEBUG) -DN_RUNS=50 search.cc -o $@
-	gdb ./$@
+	gdb --args ./$@ $(FILE) $(BENCHMARKS)
 
 div: div.cc
 	$(DEBUG) $< -o $@
@@ -49,8 +50,14 @@ lin: lin.cc
 d_lin: lin.cc
 	$(DEBUG) -o $@ $(LIB) $< -lbenchmark -lpthread && gdb ./$@
 
+splines: splines.cc
+	$(PROFILE) $< -o $@
+	#$(DEBUG) $< -o $@
+	#gdb --args ./splines -f input/uniform.1000.0 -n 2
+
+
 clean:
-	rm -f ./profile ./debug
+	rm -f ./profile ./debug ./splines
 
 # https://www.gnu.org/software/make/manual/make.html#Overriding
 DISTRIBUTION=uniform

@@ -1,3 +1,4 @@
+// jignesh wants me to put the info together by talking to Robert
 #include <algorithm>
 #include <assert.h>
 #include <cmath>
@@ -21,6 +22,28 @@
 #include "div.h"
 
 typedef int64_t ll;
+
+template <int pad=32>
+class PaddedVector {
+  std::vector<ll> v;
+
+  public:
+  PaddedVector(const std::vector<ll>& v) : v(v.size() + 2*pad) {
+    std::copy(v.begin(), v.end(), this->v.begin() + pad);
+    std::fill(this->v.begin(), this->v.begin() + pad,
+        std::numeric_limits<ll>::min());
+    std::fill(this->v.end() - pad, this->v.end(),
+        std::numeric_limits<ll>::max());
+  }
+  ll& operator[](long ix) {
+    // allow some inaccuracy to reduce needed precision
+    assert(ix >= -pad); assert(ix <= size() + pad);
+    return v[ix+pad]; 
+  }
+  size_t size() { return v.size() - 2*pad; }
+  ll back() { return (*this)[size()-1]; }
+};
+
 
 struct TestStats {
   std::string name;
@@ -90,7 +113,7 @@ int64_t linSIMD(const ll* arr, const int64_t guessIx, const ll x) {
   i = reverse? (i-4*(roll-1) - misalignment) : i + 4*roll - misalignment;
   // 32-aligned main loop                                                          
   for (;;i = reverse?(i-16) : i+16) {
-    assert(i<1000);
+    assert(i<1032);
     assert(i>-32);
     auto sign = reverse?-1:1;
     auto av0 = _mm256_load_si256((__m256i*)(ptr + i + sign*0));
@@ -122,19 +145,19 @@ int64_t linUnroll(const ll* a, int64_t m, ll k) {
     }
   }
 }
-
-// use an enum to get search type
 enum BsFn {
   BS_EQ,
   BS_LIN
 };
 template <BsFn f
          ,int MIN_EQ_SZ = 32
+         ,bool useFor = true
          ,SearchFn* baseForwardSearch = linUnroll
          ,SearchFn* baseBackwardSearch = linUnroll<true>
          >
 class Binary {
   std::vector<ll> v;
+  int lg_v;
 
   auto szA() { return v.size() - 32; };
   const ll* a() { return &v[16]; };
@@ -153,6 +176,7 @@ class Binary {
       } else if (a[m] > x) {
         r = m;
       } else {
+//        return a[m];
         l = r = m;
       }
     }
@@ -165,10 +189,18 @@ class Binary {
     auto n = szA();
     auto a = this->a();
     auto leftIndex = 0L;
-    while (n > MIN_EQ_SZ) {
-      auto half = n / 2;
-      n -= half;
-      leftIndex = a[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+    if (useFor) {
+      for (int i = 0; i < lg_v; i++) {
+        auto half = n / 2;
+        n -= half;
+        leftIndex = a[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+      }
+    } else {
+      while (n > MIN_EQ_SZ) {
+        auto half = n / 2;
+        n -= half;
+        leftIndex = a[leftIndex + half] <= x ? leftIndex + half : leftIndex;
+      }
     }
     if constexpr(MIN_EQ_SZ == 1) return a[leftIndex];
 
@@ -183,6 +215,10 @@ class Binary {
     std::copy(_a.begin(), _a.end(), v.begin() + 16);
     std::fill(v.begin(), v.begin() + 16, std::numeric_limits<ll>::min());
     std::fill(v.end()-16, v.end(), std::numeric_limits<ll>::max());
+    //auto n = szA();
+    lg_v=0;
+    for (auto n = szA();n > MIN_EQ_SZ; n -= (n/2)) lg_v++;
+
   }
   ll operator()(const ll x) {
     switch (f) {
@@ -216,69 +252,75 @@ class Binary {
 
 enum IsFn {
   IS_LIN
- ,IS_RECURSE
+ ,IS_IDIV
+ ,IS_FP
 };
 template <IsFn f = IS_LIN
          ,int nIter = 1
+         ,bool saveSub = false
          ,SearchFn* baseForwardSearch = linSIMD
          ,SearchFn* baseBackwardSearch = linSIMD<true>
          >
 struct Interpolation {
   static constexpr int pad = 32;
   int lgScale;
-  DivLut::Divisor d;
+  DivLut::Divisor d_range_width;
   // describe all of the operations included
   DivLut tableDL;
-  std::vector<ll> v;
+  PaddedVector<> A;
+  ll i_range_width;
+  double f_aL, f_width_range;
 
-  auto szA() { return v.size() - 2*pad; };
-  const ll* a() { return &v[pad]; };
-
-  auto isRecurse(const ll x) {
-    ll l = 0;
-    ll r = szA() - 1;
-    assert(szA() - l >= 0); // assume non-empty vector
-    auto a = this->a();
-
-    auto m = l + (x-a[l]) / d;
-    assert(m < szA()); assert(m >= l);
-    assert(a[m] >= a[l]); // we know this because n would've been less than d
-
-    for (;;) {
-      if (a[m] < x) l = m + 1;
-      else if (a[m] > x) r = m - 1;
-      else return a[m];
-
-      auto n = ((x-a[l]) >> lgScale) * (r-l);
-      auto d = tableDL[(a[r] - a[l]) >> lgScale];
-      m = l + n/d;
-      assert(m <= szA()); assert(m >= l);
-      if (m >= r) return a[baseBackwardSearch(a,r,x)];
-      else if (m <= l) return a[baseForwardSearch(a,l,x)];
+  ll getMid(const ll x, const ll left, const ll right) {
+    switch (f) {
+      case IS_FP:
+        return left + ((double)x - (double)(A[left])) * (double)(right-left) /
+          (double)(A[right]-A[left]);
+        break;
+      case IS_IDIV:
+        return left + (x-A[left]) / ((A[right]-A[left]) / (right-left));
+        break;
+      case IS_LIN:
+        return left + ((x - A[left]) >> lgScale) * (right-left) /
+          tableDL[(A[right] - A[left]) >> lgScale];
+        break;
     }
   }
 
-  auto isLin(const ll x) {
-    ll l = 0;
-    ll r = szA() - 1;
+  ll getMid(const ll x) {
+    switch (f) {
+      case IS_FP:
+        return (ll)(((double)x - f_aL) * f_width_range);
+        break;
+      case IS_IDIV:
+        return (x - A[0]) / i_range_width;
+        break;
+      case IS_LIN:
+        return saveSub? x / d_range_width - 1 : (x - A[0]) / d_range_width;
+        break;
+    }
+  }
 
-    const auto a = this->a();
-    assert(r - l >= 0); // assume non-empty vector
-    auto m = l + (x-a[l]) / d;
+  auto is(const ll x) {
+    ll left = 0;
+    ll right = A.size() - 1;
+    assert(A.size() >= 1);
 
-    for (int i = 1; i < nIter; i++) {
-      assert(m <= r); assert(m >= l);
-      if (a[m] <= x) l = m;
-      if (a[m] >= x) r = m;
-      // maybe test for equality
-      auto n = ((x-a[l]) >> lgScale) * (r-l);
-      auto d = tableDL[(a[r] - a[l]) >> lgScale];
-      m = l + n/d;
-      assert(m <= szA()); assert(m >= l);
+    ll mid = getMid(x);
+    for (int i = 1; (nIter < 0 ? true : i < nIter); i++) {
+      if (A[mid] <= x) left = mid;
+      if (A[mid] >= x) right = mid;
+      
+      mid = getMid(x, left, right);
+      if (nIter < 0) {
+        if (mid >= right) return A[baseBackwardSearch(&A[0], right, x)];
+        else if (mid <= left) return A[baseForwardSearch(&A[0], left, x)];
+      }
+      assert(mid >= left); assert(mid <= right);
     }
 
-    if (a[m] > x) return a[baseBackwardSearch(a,m-1,x)];
-    return a[baseForwardSearch(a,m,x)];
+    if (A[mid] > x) return A[baseBackwardSearch(&A[0], mid - 1, x)];
+    return A[baseForwardSearch(&A[0], mid, x)];
   }
 
   public:
@@ -287,27 +329,24 @@ struct Interpolation {
   // can avoid it with hoisted because don't need to do lookup
   // lookup pays for additional shift
   // I have to use my buffer space since my division is off by one
-  Interpolation(const std::vector<ll>& _a) : v(_a.size() + 2*pad) {
-    // put barriers to allow fast linear search
-    std::copy(_a.begin(), _a.end(), v.begin() + pad);
-    std::fill(v.begin(), v.begin() + pad, std::numeric_limits<ll>::min());
-    std::fill(v.end()-pad, v.end(), std::numeric_limits<ll>::max());
-
+  Interpolation(const std::vector<ll>& v) : A(v) {
     // maybe want a.size() since we truncate
-    lgScale = lg(_a.size() -1);
+    lgScale = lg(A.size() - 1);
     //(tableDL <<= lgScale) *= (szA() - 1); 
     //tableDL <<= lgScale; 
     //auto d2 = tableDL[(_a.back() - _a.front()) >> lgScale];
-    d = (DivLut::Divisor((_a.back() - _a.front()) >>  lgScale) << lgScale) / (szA() - 1);
-    //auto d3 = d2;
+    d_range_width = saveSub? (DivLut::Divisor(A.back() >> lgScale) << lgScale) / A.size() :
+      (DivLut::Divisor((A.back() - A[0]) >>  lgScale) << lgScale) / (A.size() - 1);
+    i_range_width = (A.back() - A[0]) / (A.size() - 1);
+    f_aL = A[0];
+    f_width_range =  (double)(A.size() - 1) / (double)(A.back() - A[0]);
   }
   ll operator()(const ll x) {
     switch (f) {
       case IsFn::IS_LIN:
-        return isLin(x);
-        break;
-      case IsFn::IS_RECURSE:
-        return isRecurse(x);
+      case IsFn::IS_FP:
+      case IsFn::IS_IDIV:
+        return is(x);
         break;
     };
     return 0;
@@ -316,9 +355,14 @@ struct Interpolation {
     std::stringstream ss;
     switch (f) {
       case IsFn::IS_LIN:
-        ss << "isLin_" << nIter; break;
-      case IsFn::IS_RECURSE:
-        ss << "isRecurse"; break;
+        if (nIter < 0) ss << "isRecurse";
+        else if (saveSub) ss << "isSub";
+        else ss << "isLin_" << nIter;
+        break;
+      case IsFn::IS_IDIV:
+        ss << "isIDiv"; break;
+      case IsFn::IS_FP:
+        ss << "isFp"; break;
       default:
         ss << "is???"; break;
     }
@@ -392,9 +436,12 @@ int main(int argc, char *argv[]) {
     if (s == "bsEq") ts = benchmark<Binary<BS_EQ>>(input,testIndexes);
     else if (s == "bs") ts = benchmark<Binary<BS_LIN,1>>(input,testIndexes);
     else if (s == "bsLin_32") ts = benchmark<Binary<BS_LIN,32>>(input,testIndexes);
-    else if (s == "isRecurse") ts = benchmark<Interpolation<IS_RECURSE,-1,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "isRecurse") ts = benchmark<Interpolation<IS_LIN,-1,false,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "isFp") ts = benchmark<Interpolation<IS_FP>>(input, testIndexes);
+    else if (s == "isIDiv") ts = benchmark<Interpolation<IS_IDIV>>(input, testIndexes);
     else if (s == "isLin_1") ts = benchmark<Interpolation<>>(input, testIndexes);
     else if (s == "isLin_2") ts = benchmark<Interpolation<IS_LIN,2>>(input, testIndexes);
+    else if (s == "isSub") ts = benchmark<Interpolation<IS_LIN,1,true>>(input, testIndexes);
     else if (s == "oracle") ts = benchmark(input, testIndexes,o);
     if (!ts.ok)
       std::cerr << "mess up " << argv[1] << ' ' << s << '\n';

@@ -1,6 +1,8 @@
 #ifndef DIV_H
 #define DIV_H
 
+#include "util.h"
+
 class DivLut {
   using Numerator = unsigned long;
   using Denominator = int;
@@ -21,7 +23,7 @@ public:
       d.p >>= n;
       return d;
     }
-    Divisor operator*(Numerator n) const {
+    Divisor operator/(Numerator n) const {
       Divisor d = *this;
       d.p *= n;
       return d;
@@ -42,6 +44,6 @@ public:
     }
   }
   DivLut& operator<<=(int n) { for (auto& d : t) d = d << n; return *this;}
-  DivLut& operator*=(Numerator n) { for (auto& d : t) d = d * n; return *this;}
+  DivLut& operator/=(Numerator n) { for (auto& d : t) d = d / n; return *this;}
 };
 #endif

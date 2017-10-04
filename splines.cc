@@ -142,6 +142,9 @@ int main(int argc, char* argv[]) {
   for (auto fileName : fileNames) {
     auto nums = readInts(fileName);
 
+    nums.insert(nums.begin(), 0);
+    std::cout << meanAbsErr(nums, 0, nums.size() - 1) << ' ' << meanAbsErr(nums, 1, nums.size() - 1) << '\n';
+
     // dijkstras
     for (auto n : nSplines) {
       std::cout << fileName << ' ' << n << ' ';
