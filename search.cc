@@ -257,11 +257,11 @@ enum IsFn {
 };
 template <IsFn f = IS_LIN
          ,int nIter = 1
-         ,bool saveSub = false
+         ,bool fastFirst = true
          ,SearchFn* baseForwardSearch = linSIMD
          ,SearchFn* baseBackwardSearch = linSIMD<true>
          >
-struct Interpolation {
+class Interpolation {
   static constexpr int pad = 32;
   int lgScale;
   DivLut::Divisor d_range_width;
@@ -296,7 +296,7 @@ struct Interpolation {
         return (x - A[0]) / i_range_width;
         break;
       case IS_LIN:
-        return saveSub? x / d_range_width - 1 : (x - A[0]) / d_range_width;
+        return (x - A[0]) / d_range_width;
         break;
     }
   }
@@ -306,11 +306,14 @@ struct Interpolation {
     ll right = A.size() - 1;
     assert(A.size() >= 1);
 
-    ll mid = getMid(x);
+    ll mid = fastFirst? getMid(x) : getMid(x, left, right);
     for (int i = 1; (nIter < 0 ? true : i < nIter); i++) {
-      if (A[mid] <= x) left = mid;
-      if (A[mid] >= x) right = mid;
+      if (A[mid] < x) left = mid+1;
+      else if (A[mid] > x) right = mid-1;
+      else return A[mid];
+      if (left==right) return A[left];
       
+      assert(left<right);
       mid = getMid(x, left, right);
       if (nIter < 0) {
         if (mid >= right) return A[baseBackwardSearch(&A[0], right, x)];
@@ -335,8 +338,8 @@ struct Interpolation {
     //(tableDL <<= lgScale) *= (szA() - 1); 
     //tableDL <<= lgScale; 
     //auto d2 = tableDL[(_a.back() - _a.front()) >> lgScale];
-    d_range_width = saveSub? (DivLut::Divisor(A.back() >> lgScale) << lgScale) / A.size() :
-      (DivLut::Divisor((A.back() - A[0]) >>  lgScale) << lgScale) / (A.size() - 1);
+    d_range_width = (DivLut::Divisor((A.back() - A[0]) >>  lgScale) << lgScale)
+      / (A.size() - 1);
     i_range_width = (A.back() - A[0]) / (A.size() - 1);
     f_aL = A[0];
     f_width_range =  (double)(A.size() - 1) / (double)(A.back() - A[0]);
@@ -356,13 +359,12 @@ struct Interpolation {
     switch (f) {
       case IsFn::IS_LIN:
         if (nIter < 0) ss << "isRecurse";
-        else if (saveSub) ss << "isSub";
-        else ss << "isLin_" << nIter;
+        else ss << "isLin_" << nIter << '_' << fastFirst;
         break;
       case IsFn::IS_IDIV:
-        ss << "isIDiv"; break;
+        ss << "isIDiv" << '_' << fastFirst; break;
       case IsFn::IS_FP:
-        ss << "isFp"; break;
+        ss << "isFp" << '_' << fastFirst; break;
       default:
         ss << "is???"; break;
     }
@@ -436,10 +438,12 @@ int main(int argc, char *argv[]) {
     if (s == "bsEq") ts = benchmark<Binary<BS_EQ>>(input,testIndexes);
     else if (s == "bs") ts = benchmark<Binary<BS_LIN,1>>(input,testIndexes);
     else if (s == "bsLin_32") ts = benchmark<Binary<BS_LIN,32>>(input,testIndexes);
-    else if (s == "isRecurse") ts = benchmark<Interpolation<IS_LIN,-1,false,linUnroll,linUnroll<true>>>(input, testIndexes);
-    else if (s == "isFp") ts = benchmark<Interpolation<IS_FP>>(input, testIndexes);
+    else if (s == "isRecurse") ts = benchmark<Interpolation<IS_LIN,-1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "isFp") ts = benchmark<Interpolation<IS_FP,-1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "isFp_slow") ts = benchmark<Interpolation<IS_FP,-1,false,linUnroll,linUnroll<true>>>(input, testIndexes);
     else if (s == "isIDiv") ts = benchmark<Interpolation<IS_IDIV>>(input, testIndexes);
     else if (s == "isLin_1") ts = benchmark<Interpolation<>>(input, testIndexes);
+    else if (s == "isLin_1_slow") ts = benchmark<Interpolation<IS_LIN,1,false>>(input, testIndexes);
     else if (s == "isLin_2") ts = benchmark<Interpolation<IS_LIN,2>>(input, testIndexes);
     else if (s == "isSub") ts = benchmark<Interpolation<IS_LIN,1,true>>(input, testIndexes);
     else if (s == "oracle") ts = benchmark(input, testIndexes,o);
@@ -447,6 +451,7 @@ int main(int argc, char *argv[]) {
       std::cerr << "mess up " << argv[1] << ' ' << s << '\n';
     tests.push_back(ts);
   }
+
 
   // Set-up the headers and organize data
   bool first = true;

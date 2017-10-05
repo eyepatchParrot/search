@@ -1,11 +1,11 @@
 #CC=g++
 CC=clang++
-OPT=-Wall -std=c++1z -fno-omit-frame-pointer -ffast-math -march=native -ggdb
+OPT=-Wall -std=c++1z -fno-omit-frame-pointer -ffast-math -march=native -ggdb -ffast-math
 PROFILE=$(CC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(CC) $(OPT)
 LIB=-I$(HOME)/include -L$(HOME)/lib 
 
-FILE=input/uniform.1000.8
+FILE=input/uniform.1000.10
 ifdef NSORT
 	DEFINES += -DNSORT
 endif
@@ -19,7 +19,9 @@ ifdef SUBSET_SIZE
 	DEFINES += -DSUBSET_SIZE=$(SUBSET_SIZE)
 endif
 #BENCHMARKS=bsEq bs bsLin_32 isRecurse isLin_1 isLin_2 oracle isSub
-BENCHMARKS=isFp isIDiv isLin_1 bs
+#BENCHMARKS=isRecurse isFp isFp_slow isLin_1 isLin_1_slow bs
+#BENCHMARKS=isFp isFp_slow isIDiv
+BENCHMARKS=isLin_1 isLin_2
 
 .PHONY: run search debug d_lin lin splines
 run: search $(FILE)
