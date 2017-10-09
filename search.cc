@@ -145,15 +145,16 @@ int64_t linUnroll(const ll* a, int64_t m, ll k) {
     }
   }
 }
+
 enum BsFn {
   BS_EQ,
   BS_LIN
 };
 template <BsFn f
-         ,int MIN_EQ_SZ = 32
+         ,int MIN_EQ_SZ = 16
          ,bool useFor = true
-         ,SearchFn* baseForwardSearch = linUnroll
-         ,SearchFn* baseBackwardSearch = linUnroll<true>
+         ,SearchFn* baseForwardSearch = linSIMD
+         ,SearchFn* baseBackwardSearch = linSIMD<true>
          >
 class Binary {
   std::vector<ll> v;
@@ -258,8 +259,8 @@ enum IsFn {
 template <IsFn f = IS_LIN
          ,int nIter = 1
          ,bool fastFirst = true
-         ,SearchFn* baseForwardSearch = linSIMD
-         ,SearchFn* baseBackwardSearch = linSIMD<true>
+         ,SearchFn* baseForwardSearch = linUnroll
+         ,SearchFn* baseBackwardSearch = linUnroll<true>
          >
 class Interpolation {
   static constexpr int pad = 32;
@@ -281,7 +282,7 @@ class Interpolation {
         return left + (x-A[left]) / ((A[right]-A[left]) / (right-left));
         break;
       case IS_LIN:
-        return left + ((x - A[left]) >> lgScale) * (right-left) /
+        return left + (ll)(((x - A[left]) >> lgScale) * (right-left)) /
           tableDL[(A[right] - A[left]) >> lgScale];
         break;
     }
@@ -296,7 +297,7 @@ class Interpolation {
         return (x - A[0]) / i_range_width;
         break;
       case IS_LIN:
-        return (x - A[0]) / d_range_width;
+        return (uint64_t)(x - A[0]) / d_range_width;
         break;
     }
   }
@@ -437,10 +438,11 @@ int main(int argc, char *argv[]) {
     std::string s = argv[i];
     if (s == "bsEq") ts = benchmark<Binary<BS_EQ>>(input,testIndexes);
     else if (s == "bs") ts = benchmark<Binary<BS_LIN,1>>(input,testIndexes);
-    else if (s == "bsLin_32") ts = benchmark<Binary<BS_LIN,32>>(input,testIndexes);
+    else if (s == "bsLin") ts = benchmark<Binary<BS_LIN>>(input,testIndexes);
     else if (s == "isRecurse") ts = benchmark<Interpolation<IS_LIN,-1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
-    else if (s == "isFp") ts = benchmark<Interpolation<IS_FP,-1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
     else if (s == "isFp_slow") ts = benchmark<Interpolation<IS_FP,-1,false,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "isFp") ts = benchmark<Interpolation<IS_FP,-1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "isFp_1") ts = benchmark<Interpolation<IS_FP,1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
     else if (s == "isIDiv") ts = benchmark<Interpolation<IS_IDIV>>(input, testIndexes);
     else if (s == "isLin_1") ts = benchmark<Interpolation<>>(input, testIndexes);
     else if (s == "isLin_1_slow") ts = benchmark<Interpolation<IS_LIN,1,false>>(input, testIndexes);
