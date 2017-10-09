@@ -236,12 +236,13 @@ class Binary {
     std::stringstream ss;
     switch (f) {
       case BsFn::BS_EQ:
-        ss << "bsEq"; break;
+        ss << "binary-naive"; break;
       case BsFn::BS_LIN:
         if (MIN_EQ_SZ == 1) {
-          ss << "bs";
+          ss << "binary-size";
         } else {
-          ss << "bsLin_" << MIN_EQ_SZ;
+          ss << "binary-linear";
+          //ss << "bsLin_" << MIN_EQ_SZ;
         }
         break;
       default:
@@ -360,12 +361,20 @@ class Interpolation {
     switch (f) {
       case IsFn::IS_LIN:
         if (nIter < 0) ss << "isRecurse";
-        else ss << "isLin_" << nIter << '_' << fastFirst;
+        else ss << "interpolation-linear";
+        //else ss << "isLin_" << nIter << '_' << fastFirst;
         break;
       case IsFn::IS_IDIV:
         ss << "isIDiv" << '_' << fastFirst; break;
       case IsFn::IS_FP:
-        ss << "isFp" << '_' << fastFirst; break;
+        if (nIter < 0) {
+          if (!fastFirst) ss << "interpolation-naive";
+          else ss << "interpolation-recurse";
+        } else {
+          ss << "interpolation-linear-fp";
+          //else ss << "isFp" << '_' << fastFirst; break;
+        }
+        break;
       default:
         ss << "is???"; break;
     }
@@ -436,15 +445,15 @@ int main(int argc, char *argv[]) {
   for (int i = 2; i < argc; i++) {
     TestStats ts; 
     std::string s = argv[i];
-    if (s == "bsEq") ts = benchmark<Binary<BS_EQ>>(input,testIndexes);
-    else if (s == "bs") ts = benchmark<Binary<BS_LIN,1>>(input,testIndexes);
-    else if (s == "bsLin") ts = benchmark<Binary<BS_LIN>>(input,testIndexes);
+    if (s == "binary-naive") ts = benchmark<Binary<BS_EQ>>(input,testIndexes);
+    else if (s == "binary-size") ts = benchmark<Binary<BS_LIN,1>>(input,testIndexes);
+    else if (s == "binary-linear") ts = benchmark<Binary<BS_LIN>>(input,testIndexes);
+    else if (s == "interpolation-naive") ts = benchmark<Interpolation<IS_FP,-1,false,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "interpolation-recurse") ts = benchmark<Interpolation<IS_FP,-1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "interpolation-linear-fp") ts = benchmark<Interpolation<IS_FP,1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
+    else if (s == "interpolation-linear") ts = benchmark<Interpolation<>>(input, testIndexes);
     else if (s == "isRecurse") ts = benchmark<Interpolation<IS_LIN,-1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
-    else if (s == "isFp_slow") ts = benchmark<Interpolation<IS_FP,-1,false,linUnroll,linUnroll<true>>>(input, testIndexes);
-    else if (s == "isFp") ts = benchmark<Interpolation<IS_FP,-1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
-    else if (s == "isFp_1") ts = benchmark<Interpolation<IS_FP,1,true,linUnroll,linUnroll<true>>>(input, testIndexes);
     else if (s == "isIDiv") ts = benchmark<Interpolation<IS_IDIV>>(input, testIndexes);
-    else if (s == "isLin_1") ts = benchmark<Interpolation<>>(input, testIndexes);
     else if (s == "isLin_1_slow") ts = benchmark<Interpolation<IS_LIN,1,false>>(input, testIndexes);
     else if (s == "isLin_2") ts = benchmark<Interpolation<IS_LIN,2>>(input, testIndexes);
     else if (s == "isSub") ts = benchmark<Interpolation<IS_LIN,1,true>>(input, testIndexes);
