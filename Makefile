@@ -5,7 +5,7 @@ PROFILE=$(CC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(CC) $(OPT)
 LIB=-I$(HOME)/include -L$(HOME)/lib 
 
-FILE=input/uniform.1000.10
+FILE=input/uniform.1000.7
 ifdef NSORT
 	DEFINES += -DNSORT
 endif

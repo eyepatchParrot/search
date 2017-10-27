@@ -47,6 +47,37 @@ static void BM_Search(benchmark::State& state) {
 #define R RangeMultiplier(3)->Ranges({{2,40}})
 
 template < bool reverse=false, int roll=1>
+int linSIMD3(const V* arr, int guessIx, V x) {
+  auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
+  auto ptr = arr;
+  auto i = guessIx;
+  auto misalignment = ((uintptr_t)(ptr+i) & 31)/sizeof(V);
+  for (int j = 0; j < 4*roll; j++)
+		if (reverse? (arr[i-j] <= x) : arr[i+j] >= x) return reverse? i-j : i+j;
+  i = reverse? (i-4*(roll-1) - misalignment) : i + 4*roll - misalignment;
+  // 32-aligned main loop                                                          
+  for (;;i = reverse?(i-16) : i+16) {
+		assert(i < 1032); assert(i > -32);
+    auto sign = reverse?-1:1;
+    __m256i av[4];
+    for (int j=0;j<4;j++)
+      av[j] = _mm256_load_si256((__m256i*)(ptr + i + sign*j*4));
+    __m256i cmp[4];
+    int msk[4];
+    cmp[3] = reverse? _mm256_cmpgt_epi64(vecXX, av[3]) :  _mm256_cmpgt_epi64(av[3], vecXX);
+    msk[3] = _mm256_movemask_epi8(cmp[3]);
+    if (!msk[3]) continue;
+    for (int j=0;j<3;j++)
+      cmp[j] = reverse? _mm256_cmpgt_epi64(vecXX, av[j]) :   _mm256_cmpgt_epi64(av[j],vecXX );
+    for (int j=0;j<3;j++)
+      msk[j] = _mm256_movemask_epi8(cmp[j]);
+    for (int j=0;j<4;j++)
+      if (msk[j]) return reverse? (i + 4 - _lzcnt_u32(msk[j]) / 8 - j * 4) : i + _tzcnt_u32(msk[j]) / 8 + j * 4;
+  }
+}
+BENCHMARK_TEMPLATE(BM_Search, linSIMD3)->R;
+
+template < bool reverse=false, int roll=1>
 int linSIMD2(const V* arr, const int guessIx, const V x) {
   auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
   auto ptr = arr;
@@ -57,8 +88,9 @@ int linSIMD2(const V* arr, const int guessIx, const V x) {
     if (reverse? (arr[i-j] <= x) : arr[i+j] >= x) return reverse? i-j : i+j;
   }
   i = reverse? (i-4*(roll-1) - misalignment) : i + 4*roll - misalignment;
-  // 32-aligned main loop                                                          
-  for (;;i = reverse?(i-16) : i+16) {
+	// 32-aligned main loop                                                          
+	for (;;i = reverse?(i-16) : i+16) {
+		assert(i < 1032); assert(i > -32);
     auto sign = reverse?-1:1;
     auto av0 = _mm256_load_si256((__m256i*)(ptr + i + sign*0));
     auto av1 = _mm256_load_si256((__m256i*)(ptr + i + sign*4));
@@ -79,7 +111,7 @@ int linSIMD2(const V* arr, const int guessIx, const V x) {
     if (msk3) return reverse? (i + 4 - _lzcnt_u32(msk3) / 8 - 3 * 4) : i + _tzcnt_u32(msk3) / 8 + 3 * 4;
   }
 }
-//BENCHMARK_TEMPLATE(BM_Search, linSIMD2)->R;
+BENCHMARK_TEMPLATE(BM_Search, linSIMD2)->R;
 //BENCHMARK_TEMPLATE(BM_Search, linSIMD2<false,3>)->R;
 template < bool reverse=false, int roll=1>
 int linSIMD(const V* arr, const int guessIx, const V x) {

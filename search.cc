@@ -260,8 +260,8 @@ enum IsFn {
 template <IsFn f = IS_LIN
          ,int nIter = 1
          ,bool fastFirst = true
-         ,SearchFn* baseForwardSearch = linUnroll
-         ,SearchFn* baseBackwardSearch = linUnroll<true>
+         ,SearchFn* baseForwardSearch = linSIMD
+         ,SearchFn* baseBackwardSearch = linSIMD<true>
          >
 class Interpolation {
   static constexpr int pad = 32;
