@@ -47,13 +47,8 @@ class PaddedVector {
 
 struct TestStats {
   std::string name;
-  std::vector<std::tuple<double, int> > cyclesByIx;
+  std::vector<double> ns;
   bool ok;
-
-  void datum(double dt) { cyclesByIx.emplace_back(dt, cyclesByIx.size()); }
-  void data(TestStats& ts) {
-      for (auto t_i : ts.cyclesByIx) datum(std::get<0>(t_i));
-  }
 };
 
 template <class S>
@@ -74,6 +69,7 @@ TestStats benchmark(
   // get verification info
   auto expSum = 0UL, valSum = 0UL;
   for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
+  // https://stackoverflow.com/questions/18669296/c-openmp-parallel-for-loop-alternatives-to-stdvector
 
   for (int runIx = 0; runIx < nRuns; runIx++) {
     double t0 = omp_get_wtime();
@@ -85,7 +81,7 @@ TestStats benchmark(
       assert(val == vals[i]);
     }
     double t1 = omp_get_wtime();
-    ts.datum(t1-t0);
+    ts.ns.push_back(1e9*(t1-t0));
   }
   ts.ok = valSum == expSum;
   return ts;
@@ -463,22 +459,25 @@ int main(int argc, char *argv[]) {
 
 
   // Set-up the headers and organize data
-  bool first = true;
-  for (auto& t : tests) {
-    printf("%s%s", true != first ? "," : "", t.name.c_str());
-#ifndef NSORT
-    std::sort(t.cyclesByIx.begin(), t.cyclesByIx.end());
-#endif
-    first = false;
+  std::vector<std::vector<size_t>> testsIxs(tests.size(),
+      std::vector<size_t>(N_RUNS));
+  for (int i = 0; i < tests.size(); i++) {
+    auto& t = tests[i];
     assert(t.cyclesByIx.size() == N_RUNS);
+    printf("%s%s", 0 != i ? "," : "", t.name.c_str());
+    std::iota(testsIxs[i].begin(), testsIxs[i].end(), 0);
+#ifndef NSORT
+    std::sort(testsIxs[i].begin(), testsIxs[i].end(), [t](size_t a, size_t b) {
+        return t.ns[a] < t.ns[b]; });
+#endif
   }
-  for (int i = 0; i < N_RUNS && (N_SAMPLES < 0 ? true : i < N_SAMPLES); i++) {
-    first = true;
+  for (int runIx = 0; runIx < N_RUNS && (N_SAMPLES < 0 ? true : runIx < N_SAMPLES); runIx++) {
     printf("\n");
-    for (auto& ts : tests) {
-      printf("%s%.3f", true != first ? "," : "",
-          1e9 * std::get<0>(ts.cyclesByIx[i]) / (double)testIndexes.size());
-      first = false;
+    for (int testIx = 0; testIx < tests.size(); testIx++) {
+      auto& t = tests[testIx];
+      auto nsIx = testsIxs[testIx][runIx];
+      printf("%s%.3f", 0 != testIx ? "," : "",
+          t.ns[nsIx] / (double)testIndexes.size());
     }
   }
   printf("\n");
