@@ -1,4 +1,3 @@
-// jignesh wants me to put the info together by talking to Robert
 #include <algorithm>
 #include <assert.h>
 #include <cmath>
@@ -17,6 +16,7 @@
 #include <vector>
 #include <x86intrin.h>
 #include <limits>
+#include "omp.h"
 
 #include "util.h"
 #include "div.h"
@@ -47,11 +47,10 @@ class PaddedVector {
 
 struct TestStats {
   std::string name;
-  std::vector<std::tuple<ll, int> > cyclesByIx;
+  std::vector<std::tuple<double, int> > cyclesByIx;
   bool ok;
 
-  void datum(ll dt) { cyclesByIx.emplace_back(dt, cyclesByIx.size()); }
-  void datum(ll st, ll et) { datum(et-st); }
+  void datum(double dt) { cyclesByIx.emplace_back(dt, cyclesByIx.size()); }
   void data(TestStats& ts) {
       for (auto t_i : ts.cyclesByIx) datum(std::get<0>(t_i));
   }
@@ -77,7 +76,7 @@ TestStats benchmark(
   for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
 
   for (int runIx = 0; runIx < nRuns; runIx++) {
-    ll st = __rdtsc();
+    double t0 = omp_get_wtime();
 
     for (int i = 0; i < vals.size(); i++) {
       //ERR("%d,%d,", i,indexes[i]);
@@ -85,9 +84,8 @@ TestStats benchmark(
       valSum += val;
       assert(val == vals[i]);
     }
-
-    ll et = __rdtsc();
-    ts.datum(st, et);
+    double t1 = omp_get_wtime();
+    ts.datum(t1-t0);
   }
   ts.ok = valSum == expSum;
   return ts;
@@ -478,7 +476,8 @@ int main(int argc, char *argv[]) {
     first = true;
     printf("\n");
     for (auto& ts : tests) {
-      printf("%s%.3f", true != first ? "," : "", std::get<0>(ts.cyclesByIx[i]) / (double)testIndexes.size());
+      printf("%s%.3f", true != first ? "," : "",
+          1e9 * std::get<0>(ts.cyclesByIx[i]) / (double)testIndexes.size());
       first = false;
     }
   }

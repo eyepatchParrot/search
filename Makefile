@@ -1,9 +1,11 @@
 #CC=g++
 CC=clang++
-OPT=-Wall -std=c++1z -fno-omit-frame-pointer -ffast-math -march=native -ggdb -ffast-math
+OPT=-Wall -std=c++1z -fno-omit-frame-pointer -ffast-math -march=native -ggdb -ffast-math -fopenmp=libgomp
 PROFILE=$(CC) $(OPT) -O3 -DNDEBUG
 DEBUG=$(CC) $(OPT)
 LIB=-I$(HOME)/include -L$(HOME)/lib 
+INC=-iquote /usr/lib/gcc/x86_64-linux-gnu/5/include/
+LDFLAGS=$(INC)
 
 FILE=input/uniform.1000.7
 ifdef NSORT
@@ -21,17 +23,17 @@ endif
 #BENCHMARKS=bsEq bs bsLin_32 isRecurse isLin_1 isLin_2 oracle isSub
 #BENCHMARKS=isRecurse isFp isFp_slow isLin_1 isLin_1_slow bs
 #BENCHMARKS=isFp isFp_slow isIDiv
-BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
+BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
 
 .PHONY: run search debug d_lin lin splines
 run: search $(FILE)
 	./search $(FILE) $(BENCHMARKS)
 
 search: search.cc util.h div.h
-	$(PROFILE) $(DEFINES) $< -o $@
+	$(PROFILE) $(DEFINES) $< -o $@ $(LDFLAGS)
 
 debug: search.cc util.h
-	$(DEBUG) -DN_RUNS=50 search.cc -o $@
+	$(DEBUG) -DN_RUNS=50 search.cc -o $@ $(LDFLAGS)
 	gdb --args ./$@ $(FILE) $(BENCHMARKS)
 
 div: div.cc
@@ -59,7 +61,7 @@ splines: splines.cc
 
 
 clean:
-	rm -f ./profile ./debug ./splines
+	rm -f ./search ./debug ./splines ./lin
 
 # https://www.gnu.org/software/make/manual/make.html#Overriding
 DISTRIBUTION=uniform
