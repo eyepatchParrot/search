@@ -67,23 +67,40 @@ TestStats benchmark(
     vals[i] = input[indexes[i]];
   
   // get verification info
-  auto expSum = 0UL, valSum = 0UL;
+  auto expSum = 0UL;
   for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
   // https://stackoverflow.com/questions/18669296/c-openmp-parallel-for-loop-alternatives-to-stdvector
 
-  for (int runIx = 0; runIx < nRuns; runIx++) {
-    double t0 = omp_get_wtime();
+  // The proper output need only contain a single thread's output, but we should
+  // verify that it is similar to the other threads.
+  int nThreads = 1;
+  std::vector<double> thdAvg(nThreads);
+#pragma omp parallel num_threads(nThreads)
+  {
+    std::vector<double> ns(nRuns);
+    auto valSum = 0UL;
+    for (int runIx = 0; runIx < nRuns; runIx++) {
+      double t0 = omp_get_wtime();
 
-    for (int i = 0; i < vals.size(); i++) {
-      //ERR("%d,%d,", i,indexes[i]);
-      auto val = search(vals[i]);
-      valSum += val;
-      assert(val == vals[i]);
+      for (int i = 0; i < vals.size(); i++) {
+        //ERR("%d,%d,", i,indexes[i]);
+        auto val = search(vals[i]);
+        valSum += val;
+        assert(val == vals[i]);
+      }
+      double t1 = omp_get_wtime();
+      ns[runIx] = 1e9*(t1-t0);
     }
-    double t1 = omp_get_wtime();
-    ts.ns.push_back(1e9*(t1-t0));
+#pragma omp barrier
+    thdAvg[omp_get_thread_num()] = std::accumulate(ns.begin(), ns.end(), 0.0) / ns.size();
+#pragma omp single
+    {
+      ts.ns = ns;
+      ts.ok = valSum == expSum;
+    }
   }
-  ts.ok = valSum == expSum;
+  for (auto avg : thdAvg) std::cerr << avg << ' ';
+  std::cerr << '\n';
   return ts;
 }
 
@@ -197,7 +214,7 @@ class Binary {
         leftIndex = a[leftIndex + half] <= x ? leftIndex + half : leftIndex;
       }
     }
-    if constexpr(MIN_EQ_SZ == 1) return a[leftIndex];
+    if (MIN_EQ_SZ == 1) return a[leftIndex];
 
     auto guess = leftIndex + n/2;
     if (a[guess] < x) return a[baseForwardSearch(a,guess+1,x)];
@@ -451,7 +468,7 @@ int main(int argc, char *argv[]) {
     else if (s == "isLin_1_slow") ts = benchmark<Interpolation<IS_LIN,1,false>>(input, testIndexes);
     else if (s == "isLin_2") ts = benchmark<Interpolation<IS_LIN,2>>(input, testIndexes);
     else if (s == "isSub") ts = benchmark<Interpolation<IS_LIN,1,true>>(input, testIndexes);
-    else if (s == "oracle") ts = benchmark(input, testIndexes,o);
+    else if (s == "oracle") ts = benchmark(input, testIndexes, o);
     if (!ts.ok)
       std::cerr << "mess up " << argv[1] << ' ' << s << '\n';
     tests.push_back(ts);
