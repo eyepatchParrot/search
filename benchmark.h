@@ -15,14 +15,15 @@ struct TestStats {
   bool ok;
 };
 
+using Benchmark = TestStats(const std::vector<Key>&, const std::vector<int>&);
+
 template <class S>
 TestStats benchmark(
     const std::vector<Key>& input,
-    const std::vector<int>& indexes,
-    S& search) {
+    const std::vector<int>& indexes) {
+  S search(input, indexes);
   constexpr int nRuns = N_RUNS;
-  auto ts = TestStats{search.name()};
-
+  TestStats ts;
 
   // vals is shuffled, so can't use it. Maybe shuffle indices and use that
   // next time
@@ -56,19 +57,11 @@ TestStats benchmark(
     ts.thdAvg[omp_get_thread_num()] = std::accumulate(ns.begin(), ns.end(), 0.0) / ns.size();
 #pragma omp single
     {
-      ts.ns = ns;
+      ts.ns = std::move(ns);
       ts.ok = valSum == expSum;
     }
   }
   return ts;
-}
-
-template <class S>
-TestStats benchmark(
-    const std::vector<Key>& input,
-    const std::vector<int>& indexes) {
-  S s(input);
-  return benchmark(input, indexes, s);
 }
 
 #endif

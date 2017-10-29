@@ -49,19 +49,18 @@ int main(int argc, char *argv[]) {
     std::unordered_map<std::string, Benchmark*> benchmarks{
         { "interpolation-naive", benchmark<InterpolationNaive>},
         { "interpolation-recurse", benchmark<InterpolationRecurse>},
-        { "interpolation-linear", benchmark<InterpolationLinear>},
         { "binary-naive", benchmark<BinaryNaive> },
         { "binary-size", benchmark<BinarySize> },
         { "binary-linear", benchmark<BinaryLinear> },
         { "interpolation-linear-fp", benchmark<InterpolationLinearFp> },
         { "isIDiv", benchmark<InterpolationIDiv> },
-        { "isLin_1_slow", benchmark<InterpolationLin_1_slow> },
         { "isLin_2", benchmark<InterpolationLin_2> },
-        { "isSub", benchmark<InterpolationSub> }
+        { "isSub", benchmark<InterpolationSub> },
+        { "oracle", benchmark<Oracle> },
+        { "interpolation-linear", benchmark<InterpolationLinear>}
     };
     if (0 < benchmarks.count(s))
       ts = benchmarks[s](input, testIndexes);
-    else if (s == "oracle") ts = benchmark(input, testIndexes, o);
     if (!ts.ok)
       std::cerr << "mess up " << argv[1] << ' ' << s << '\n';
     else ts.name = s;

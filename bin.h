@@ -14,8 +14,7 @@ enum BsFn {
 template <BsFn f
          ,int MIN_EQ_SZ = 16
          ,bool useFor = true
-         ,SearchFn* baseForwardSearch = linSIMD
-         ,SearchFn* baseBackwardSearch = linSIMD<true>
+         ,class Linear = LinearSIMD<>
          >
 class Binary {
   PaddedVector<> A;
@@ -62,12 +61,12 @@ class Binary {
     if (MIN_EQ_SZ == 1) return a[leftIndex];
 
     auto guess = leftIndex + n/2;
-    if (a[guess] < x) return a[baseForwardSearch(a,guess+1,x)];
-    else return a[baseBackwardSearch(a,guess,x)];
+    if (a[guess] < x) return a[Linear::forward(a,guess+1,x)];
+    else return a[Linear::reverse(a,guess,x)];
   }
 
   public:
-  Binary(const std::vector<Key>& _a) : A(_a) {
+  Binary(const std::vector<Key>& _a, const std::vector<int>& indexes) : A(_a) {
     lg_v=0;
     for (auto n = A.size();n > MIN_EQ_SZ; n -= (n/2)) lg_v++;
   }

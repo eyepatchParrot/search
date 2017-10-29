@@ -22,8 +22,14 @@ class PaddedVector {
     assert(ix >= -pad); assert(ix <= size() + pad);
     return v[ix+pad]; 
   }
-  size_t size() { return v.size() - 2*pad; }
-  Key back() { return (*this)[size()-1]; }
+  const Key& operator[](long ix) const {
+    // allow some inaccuracy to reduce needed precision
+    assert(ix >= -pad); assert(ix <= size() + pad);
+    return v[ix+pad]; 
+  }
+  Key* begin() { return v.data() + pad; }
+  size_t size() const { return v.size() - 2*pad; }
+  Key back() const { return (*this)[size()-1]; }
 };
 
 #endif

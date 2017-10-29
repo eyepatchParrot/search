@@ -15,7 +15,7 @@ CXX=clang++
 CXXFLAGS=-fopenmp -Wall -std=c++1z -fno-omit-frame-pointer -ggdb -march=native $(DEFINES)
 LIB=-I$(HOME)/include -L$(HOME)/lib  
 HEADERS=oracle.h interpolate.h benchmark.h bin.h lin.h util.h div.h
-OBJ=interpolate.o
+OBJ=
 
 FILE=input/uniform.1000.7
 #BENCHMARKS=bsEq bs bsLin_32 isRecurse isLin_1 isLin_2 oracle isSub

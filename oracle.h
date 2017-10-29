@@ -37,7 +37,6 @@ class Oracle {
     j = j >= i.size() ? 0 : j;
     return a[k] == x ? a[k] : -1;
   }
-  const char* name() { return "oracle"; }
 };
 
 #endif

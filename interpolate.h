@@ -7,70 +7,81 @@
 
 #include <vector>
 
-enum IsFn {
-  IS_LIN
- ,IS_IDIV
- ,IS_FP
-};
-
 class IBase {
-protected:
-  static constexpr int pad = 32;
-  int lgScale;
-  DivLut::Divisor d_range_width;
-  // describe all of the operations included
-  DivLut tableDL;
-  PaddedVector<> A;
-  Key i_range_width;
-  double f_aL, f_width_range;
-
 public:
-  // can put lgScale internally if change indexing logic, doesn't help because
-  // you'd need a subraction instead.
-  // can avoid it with hoisted because don't need to do lookup
-  // lookup pays for additional shift
-  // I have to use my buffer space since my division is off by one
-  IBase(const std::vector<Key>& v);
-};
-
-template <IsFn f = IS_LIN
-         ,int nIter = 1
-         ,bool fastFirst = true
-         ,SearchFn* baseForwardSearch = linSIMD
-         ,SearchFn* baseBackwardSearch = linSIMD<true>
-         >
-class Interpolation : public IBase {
   using Index = int64_t;
+  using PadVec = PaddedVector<>;
 
-  Index getMid(const Key x, const Index left, const Index right) {
-    switch (f) {
-      case IS_FP:
+  static constexpr int Recurse = -1;
+  static constexpr bool Precompute = true;
+
+  struct Lut {
+    // maybe want a.size() since we truncate
+    Lut(const PadVec& a) : A(a), lgScale(lg(A.size() - 1)), 
+    d_range_width((DivLut::Divisor((A.back() - A[0]) >>  lgScale) << lgScale) 
+        / (A.size() - 1)) {}
+
+    const PadVec& A;
+    int lgScale;
+    DivLut::Divisor d_range_width;
+    DivLut divisors;
+
+    Index operator()(const Key x, const Index left, const Index right) {
+      return left + (Key)(((x - A[left]) >> lgScale) * (right-left)) /
+        divisors[(A[right] - A[left]) >> lgScale];
+    }
+    Index operator()(const Key x) {
+      return (uint64_t)(x - A[0]) / d_range_width;
+    }
+  };
+  template <bool precompute=false>
+    struct Float {
+      
+      Float(const PadVec& a) : A(a), f_aL(A[0]),
+      f_width_range( (double)(A.size() - 1) / (double)(A.back() - A[0])) {}
+
+      const PadVec& A;
+      const double f_aL;
+      const double f_width_range;
+
+      Index operator()(const Key x, const Index left, const Index right) {
         return left + ((double)x - (double)(A[left])) * (double)(right-left) /
           (double)(A[right]-A[left]);
-        break;
-      case IS_IDIV:
-        return left + (x-A[left]) / ((A[right]-A[left]) / (right-left));
-        break;
-      case IS_LIN:
-        return left + (Key)(((x - A[left]) >> lgScale) * (right-left)) /
-          tableDL[(A[right] - A[left]) >> lgScale];
-        break;
-    }
-  }
+      }
 
-  Index getMid(const Key x) {
-    switch (f) {
-      case IS_FP:
-        return (Index)(((double)x - f_aL) * f_width_range);
-        break;
-      case IS_IDIV:
-        return (x - A[0]) / i_range_width;
-        break;
-      case IS_LIN:
-        return (uint64_t)(x - A[0]) / d_range_width;
-        break;
+      Index operator()(const Key x) {
+        return precompute? (Index)(((double)x - f_aL) * f_width_range) :
+          (*this)(x, 0, A.size()-1);
+      }
+    };
+
+  struct IntDiv {
+    IntDiv(const PadVec& a) : A(a),
+    i_range_width((A.back() - A[0]) / (A.size() - 1)) {}
+
+    const PadVec& A;
+    Key i_range_width;
+
+    Index operator()(const Key x, const Index left, const Index right) {
+      return left + (x-A[left]) / ((A[right]-A[left]) / (right-left));
     }
-  }
+    Index operator()(const Key x) {
+      return (x - A[0]) / i_range_width;
+    }
+  };
+protected:
+  PadVec A;
+
+  IBase(const std::vector<Key>& v) : A(v) {}
+};
+
+
+template <class Interpolate = IBase::Lut
+         ,int nIter = 1
+         ,class Linear = LinearSIMD<>
+         >
+class Interpolation : public IBase {
+  Interpolate interpolate;
 
   auto is(const Key x) {
     Index left = 0;
@@ -78,7 +89,7 @@ class Interpolation : public IBase {
     auto a = A.begin();
     assert(A.size() >= 1);
 
-    Index mid = fastFirst? getMid(x) : getMid(x, left, right);
+    Index mid = interpolate(x);
     for (int i = 1; (nIter < 0 ? true : i < nIter); i++) {
       if (a[mid] < x) left = mid+1;
       else if (a[mid] > x) right = mid-1;
@@ -86,38 +97,29 @@ class Interpolation : public IBase {
       if (left==right) return a[left];
       
       assert(left<right);
-      mid = getMid(x, left, right);
+      mid = interpolate(x, left, right);
       if (nIter < 0) {
-        if (mid >= right) return a[baseBackwardSearch(a, right, x)];
-        else if (mid <= left) return a[baseForwardSearch(a, left, x)];
+        if (mid >= right) return a[Linear::reverse(a, right, x)];
+        else if (mid <= left) return a[Linear::forward(a, left, x)];
       }
       assert(mid >= left); assert(mid <= right);
     }
 
-    if (a[mid] > x) return a[baseBackwardSearch(a, mid - 1, x)];
-    return a[baseForwardSearch(a, mid, x)];
+    if (a[mid] > x) return a[Linear::reverse(a, mid - 1, x)];
+    return a[Linear::forward(a, mid, x)];
   }
 
   public:
-  using IBase::IBase;
-  Key operator()(const Key x) {
-    switch (f) {
-      case IsFn::IS_LIN:
-      case IsFn::IS_FP:
-      case IsFn::IS_IDIV:
-        return is(x);
-        break;
-    };
-    return 0;
-  }
+  Interpolation(const std::vector<Key>& v, const std::vector<int>& indexes) : IBase(v), interpolate(A) { }
+  Key operator()(const Key x) { return is(x); }
 };
 
-using InterpolationNaive = Interpolation<IS_FP,-1,false,linUnroll,linUnroll<true>>;
-using InterpolationRecurse = Interpolation<IS_FP,-1,true,linUnroll,linUnroll<true>>;
-using InterpolationLinearFp = Interpolation<IS_FP,1,true,linUnroll,linUnroll<true>>;
+
+using InterpolationNaive = Interpolation<IBase::Float<>,IBase::Recurse, LinearUnroll<>>;
+using InterpolationRecurse = Interpolation<IBase::Float<IBase::Precompute>,IBase::Recurse,LinearUnroll<>>;
+using InterpolationLinearFp = Interpolation<IBase::Float<IBase::Precompute>>;
 using InterpolationLinear = Interpolation<>;
-using InterpolationIDiv = Interpolation<IS_IDIV> ;
-using InterpolationLin_1_slow = Interpolation<IS_LIN,1,false>;
-using InterpolationLin_2 = Interpolation<IS_LIN,2>;
-using InterpolationSub = Interpolation<IS_LIN,1,true>;
+using InterpolationIDiv = Interpolation<IBase::IntDiv> ;
+using InterpolationLin_2 = Interpolation<IBase::Lut,2>;
+using InterpolationSub = Interpolation<IBase::Lut,1>;
 #endif
