@@ -2,6 +2,12 @@
 #define DIV_H
 
 #include "util.h"
+#include <array>
+
+inline int lgl_flr(uint64_t x) {
+  assert(x >= 1); // clz < 1 undefined
+  return 64 - __builtin_clzll(x);
+}
 
 class DivLut {
   using Numerator = unsigned long;

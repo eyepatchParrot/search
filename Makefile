@@ -1,13 +1,3 @@
-#CC=g++
-CC=clang++
-OMP=-fopenmp
-OPT=-Wall -std=c++1z -fno-omit-frame-pointer -ffast-math -march=native -ggdb -ffast-math $(OMP)
-PROFILE=$(CC) $(OPT) -O3 -DNDEBUG
-DEBUG=$(CC) $(OPT)
-LIB=-I$(HOME)/include -L$(HOME)/lib  
-LDFLAGS=$(INC)
-
-FILE=input/uniform.1000.7
 ifdef NSORT
 	DEFINES += -DNSORT
 endif
@@ -20,6 +10,14 @@ endif
 ifdef SUBSET_SIZE
 	DEFINES += -DSUBSET_SIZE=$(SUBSET_SIZE)
 endif
+
+CXX=clang++
+CXXFLAGS=-fopenmp -Wall -std=c++1z -fno-omit-frame-pointer -ggdb -march=native $(DEFINES)
+LIB=-I$(HOME)/include -L$(HOME)/lib  
+HEADERS=oracle.h interpolate.h benchmark.h bin.h lin.h util.h div.h
+OBJ=interpolate.o
+
+FILE=input/uniform.1000.7
 #BENCHMARKS=bsEq bs bsLin_32 isRecurse isLin_1 isLin_2 oracle isSub
 #BENCHMARKS=isRecurse isFp isFp_slow isLin_1 isLin_1_slow bs
 #BENCHMARKS=isFp isFp_slow isIDiv
@@ -27,15 +25,24 @@ endif
 BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
 
 .PHONY: run search debug d_lin lin splines
-run: search $(FILE)
+run: release $(FILE)
 	./search $(FILE) $(BENCHMARKS)
 
-search: search.cc util.h div.h
-	$(PROFILE) $(DEFINES) $< -o $@ $(LDFLAGS)
+release : CXXFLAGS += -ffast-math -O3 -DNDEBUG
+release : search
 
-debug: search.cc util.h
-	$(DEBUG) -DN_RUNS=50 search.cc -o $@ $(LDFLAGS)
+#release : LDFLAGS += -flto -L$(HOME)/llvm/lib
+
+debug : CXXFLAGS += -O0
+debug : search $(FILE)
 	gdb --args ./$@ $(FILE) $(BENCHMARKS)
+
+# add release identifier for object files
+%.o: %.cc
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+search: $(OBJ) $(HEADERS)
+	$(CXX) $(CXXFLAGS) search.cc $(OBJ) -o $@ $(LDFLAGS)
 
 div: div.cc
 	$(DEBUG) $< -o $@

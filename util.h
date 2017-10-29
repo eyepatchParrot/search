@@ -2,6 +2,10 @@
 #define UTIL_H
 
 #include <cinttypes>
+#include <assert.h>
+
+using Key = int64_t;
+using SearchFn = int64_t(const Key*, int64_t, Key);
 
 #ifdef NDEBUG
 #define ERR(A, args...)
@@ -25,31 +29,14 @@
 #define SUBSET_SIZE -1
 #endif
 
-unsigned lg(unsigned x) {
+inline unsigned lg(unsigned x) {
   assert(x >= 2); // subtracting and clz < 1 is undefined.
   return 32 - __builtin_clz(x-1);
 }
 
-unsigned lg_flr(unsigned x) {
+inline unsigned lg_flr(unsigned x) {
   assert(x >= 1);
   return 32 - __builtin_clz(x);
-}
-
-inline unsigned lgl(uint64_t x) {
-  assert(x >= 2); // subtracting and clz < 1 undefined
-  return 64 - __builtin_clzll(x-1);
-}
-
-inline int lgl_flr(uint64_t x) {
-  assert(x >= 1); // clz < 1 undefined
-  return 64 - __builtin_clzll(x);
-}
-
-// https://locklessinc.com/articles/sat_arithmetic/
-inline std::uint64_t sub_sat_u64(std::uint64_t x, std::uint64_t y) {
-  std::uint64_t res = x-y;
-  res &= -(res <= x);
-  return res;
 }
 
 #endif
