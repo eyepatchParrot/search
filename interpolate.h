@@ -75,26 +75,27 @@ class Interpolation : public IBase {
   auto is(const Key x) {
     Index left = 0;
     Index right = A.size() - 1;
+    auto a = A.begin();
     assert(A.size() >= 1);
 
     Index mid = fastFirst? getMid(x) : getMid(x, left, right);
     for (int i = 1; (nIter < 0 ? true : i < nIter); i++) {
-      if (A[mid] < x) left = mid+1;
-      else if (A[mid] > x) right = mid-1;
-      else return A[mid];
-      if (left==right) return A[left];
+      if (a[mid] < x) left = mid+1;
+      else if (a[mid] > x) right = mid-1;
+      else return a[mid];
+      if (left==right) return a[left];
       
       assert(left<right);
       mid = getMid(x, left, right);
       if (nIter < 0) {
-        if (mid >= right) return A[baseBackwardSearch(&A[0], right, x)];
-        else if (mid <= left) return A[baseForwardSearch(&A[0], left, x)];
+        if (mid >= right) return a[baseBackwardSearch(a, right, x)];
+        else if (mid <= left) return a[baseForwardSearch(a, left, x)];
       }
       assert(mid >= left); assert(mid <= right);
     }
 
-    if (A[mid] > x) return A[baseBackwardSearch(&A[0], mid - 1, x)];
-    return A[baseForwardSearch(&A[0], mid, x)];
+    if (a[mid] > x) return a[baseBackwardSearch(a, mid - 1, x)];
+    return a[baseForwardSearch(a, mid, x)];
   }
 
   public:

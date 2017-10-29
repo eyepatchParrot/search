@@ -3,6 +3,7 @@
 
 #include "lin.h"
 #include "util.h"
+#include "padded_vector.h"
 
 #include <limits>
 
@@ -17,38 +18,33 @@ template <BsFn f
          ,SearchFn* baseBackwardSearch = linSIMD<true>
          >
 class Binary {
-  std::vector<Key> v;
+  PaddedVector<> A;
   int lg_v;
 
-  auto szA() { return v.size() - 32; };
-  const Key* a() { return &v[16]; };
-
   Key bsEq(const Key x) {
-    auto a = this->a();
     unsigned l = 0;
-    unsigned r = szA();
+    unsigned r = A.size();
 
     while (r - l > 1) {
       assert(l < r);    // ordering check
       assert(l+r >= r); // overflow check
       unsigned m = l + (r-l) / 2;
-      if (a[m] < x) {
+      if (A[m] < x) {
         l = m + 1;
-      } else if (a[m] > x) {
+      } else if (A[m] > x) {
         r = m;
       } else {
-//        return a[m];
         l = r = m;
       }
     }
-    assert(a[l] == x);
-    return a[l];
+    assert(A[l] == x);
+    return A[l];
   }
 
   // https://pvk.ca/Blog/2015/11/29/retrospective-on-binary-search-and-on-compression-slash-compilation/
   auto bsLin(const Key x) {
-    auto n = szA();
-    auto a = this->a();
+    auto n = A.size();
+    auto a = A.begin();
     auto leftIndex = 0L;
     if (useFor) {
       for (int i = 0; i < lg_v; i++) {
@@ -71,15 +67,9 @@ class Binary {
   }
 
   public:
-  Binary(const std::vector<Key>& _a) : v(_a.size() + 32,0) {
-    // put barriers to allow fast linear search
-    std::copy(_a.begin(), _a.end(), v.begin() + 16);
-    std::fill(v.begin(), v.begin() + 16, std::numeric_limits<Key>::min());
-    std::fill(v.end()-16, v.end(), std::numeric_limits<Key>::max());
-    //auto n = szA();
+  Binary(const std::vector<Key>& _a) : A(_a) {
     lg_v=0;
-    for (auto n = szA();n > MIN_EQ_SZ; n -= (n/2)) lg_v++;
-
+    for (auto n = A.size();n > MIN_EQ_SZ; n -= (n/2)) lg_v++;
   }
   Key operator()(const Key x) {
     switch (f) {
