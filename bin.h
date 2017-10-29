@@ -92,21 +92,10 @@ class Binary {
     };
     return 0;
   }
-  const char* name() {
-    switch (f) {
-      case BsFn::BS_EQ:
-        return "binary-naive";
-      case BsFn::BS_LIN:
-        if (MIN_EQ_SZ == 1) {
-          return "binary-size";
-        } else {
-          return "binary-linear";
-        }
-        break;
-      default:
-        return "???";
-    }
-  }
 };
+
+using BinaryNaive = Binary<BS_EQ> ;
+using BinarySize = Binary<BS_LIN,1> ;
+using BinaryLinear = Binary<BS_LIN> ;
 
 #endif

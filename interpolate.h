@@ -6,7 +6,6 @@
 #include "padded_vector.h"
 
 #include <vector>
-#include <sstream>
 
 enum IsFn {
   IS_LIN
@@ -110,30 +109,14 @@ class Interpolation : public IBase {
     };
     return 0;
   }
-  std::string name() {
-    std::stringstream ss;
-    switch (f) {
-      case IsFn::IS_LIN:
-        if (nIter < 0) ss << "isRecurse";
-        else ss << "interpolation-linear";
-        //else ss << "isLin_" << nIter << '_' << fastFirst;
-        break;
-      case IsFn::IS_IDIV:
-        ss << "isIDiv" << '_' << fastFirst; break;
-      case IsFn::IS_FP:
-        if (nIter < 0) {
-          if (!fastFirst) ss << "interpolation-naive";
-          else ss << "interpolation-recurse";
-        } else {
-          ss << "interpolation-linear-fp";
-          //else ss << "isFp" << '_' << fastFirst; break;
-        }
-        break;
-      default:
-        ss << "is???"; break;
-    }
-    return ss.str();
-  }
 };
 
+using InterpolationNaive = Interpolation<IS_FP,-1,false,linUnroll,linUnroll<true>>;
+using InterpolationRecurse = Interpolation<IS_FP,-1,true,linUnroll,linUnroll<true>>;
+using InterpolationLinearFp = Interpolation<IS_FP,1,true,linUnroll,linUnroll<true>>;
+using InterpolationLinear = Interpolation<>;
+using InterpolationIDiv = Interpolation<IS_IDIV> ;
+using InterpolationLin_1_slow = Interpolation<IS_LIN,1,false>;
+using InterpolationLin_2 = Interpolation<IS_LIN,2>;
+using InterpolationSub = Interpolation<IS_LIN,1,true>;
 #endif
