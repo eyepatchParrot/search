@@ -17,14 +17,21 @@
 #include <x86intrin.h>
 #include <unordered_map>
 
-// ./x fileName [benchmarks ...]
+// ./x fileName nThds [benchmarks ...]
 int main(int argc, char *argv[]) {
   using std::istream_iterator;
   constexpr int seed = 42;
 
-  std::cerr << argv[1] << '\n';
+  if (2 >= argc) return -1;
 
-  std::ifstream f(argv[1]);
+  std::string fileName = argv[1];
+  int nThreads = atoi(argv[2]);
+  std::vector<std::string> benchmarks;
+  for (int i = 3; i < argc; i++) benchmarks.push_back(argv[i]);
+
+  std::cerr << fileName << '\n';
+
+  std::ifstream f(fileName);
   
   int nNums;
   f >> nNums;
@@ -40,54 +47,41 @@ int main(int argc, char *argv[]) {
     std::shuffle(allIndexes.begin(), allIndexes.end(), std::mt19937{seed});
     std::copy_n(allIndexes.begin(), nGets, testIndexes.begin());
   }
-  Oracle o(input, testIndexes);
+
+  std::unordered_map<std::string, Benchmark*> benchmarkFns{
+    { "interpolation-naive", benchmark<InterpolationNaive>},
+      { "interpolation-recurse", benchmark<InterpolationRecurse>},
+      { "binary-naive", benchmark<BinaryNaive> },
+      { "binary-size", benchmark<BinarySize> },
+      { "binary-linear", benchmark<BinaryLinear> },
+      { "interpolation-linear-fp", benchmark<InterpolationLinearFp> },
+      { "isIDiv", benchmark<InterpolationIDiv> },
+      { "isLin_2", benchmark<InterpolationLin_2> },
+      { "isSub", benchmark<InterpolationSub> },
+      { "oracle", benchmark<Oracle> },
+      { "interpolation-linear", benchmark<InterpolationLinear>}
+  };
 
   std::vector<TestStats> tests;
-  for (int i = 2; i < argc; i++) {
-    TestStats ts; 
-    std::string s = argv[i];
-    std::unordered_map<std::string, Benchmark*> benchmarks{
-        { "interpolation-naive", benchmark<InterpolationNaive>},
-        { "interpolation-recurse", benchmark<InterpolationRecurse>},
-        { "binary-naive", benchmark<BinaryNaive> },
-        { "binary-size", benchmark<BinarySize> },
-        { "binary-linear", benchmark<BinaryLinear> },
-        { "interpolation-linear-fp", benchmark<InterpolationLinearFp> },
-        { "isIDiv", benchmark<InterpolationIDiv> },
-        { "isLin_2", benchmark<InterpolationLin_2> },
-        { "isSub", benchmark<InterpolationSub> },
-        { "oracle", benchmark<Oracle> },
-        { "interpolation-linear", benchmark<InterpolationLinear>}
-    };
-    if (0 < benchmarks.count(s))
-      ts = benchmarks[s](input, testIndexes);
+  for (auto& benchmark : benchmarks) {
+    TestStats ts = benchmarkFns[benchmark](input, testIndexes, nThreads); 
     if (!ts.ok)
-      std::cerr << "mess up " << argv[1] << ' ' << s << '\n';
-    else ts.name = s;
+      std::cerr << "mess up " << fileName << ' ' << benchmark << '\n';
+    ts.name = benchmark;
     tests.push_back(ts);
   }
 
-  // Set-up the headers and organize data
-  std::vector<std::vector<size_t>> testsIxs(tests.size(),
-      std::vector<size_t>(N_RUNS));
-  for (int i = 0; i < tests.size(); i++) {
-    auto& t = tests[i];
-    assert(t.ns.size() == N_RUNS);
-    printf("%s%s", 0 != i ? "," : "", t.name.c_str());
-    std::iota(testsIxs[i].begin(), testsIxs[i].end(), 0);
+  // print report
+  for (int i = 0; i < benchmarks.size(); i++)
+    std::cout << (0 != i ? "," : "") << benchmarks[i];
+  std::cout << '\n';
+
+  constexpr int nSamples = N_SAMPLES < 0 ? N_RUNS : std::min(N_RUNS, N_SAMPLES);
 #ifndef NSORT
-    std::sort(testsIxs[i].begin(), testsIxs[i].end(), [t](size_t a, size_t b) {
-        return t.ns[a] < t.ns[b]; });
+  for (auto& t : tests)
+    std::partial_sort(t.ns.begin(), t.ns.begin() + nSamples, t.ns.end());
 #endif
-  }
-  for (int runIx = 0; runIx < N_RUNS && (N_SAMPLES < 0 ? true : runIx < N_SAMPLES); runIx++) {
-    printf("\n");
-    for (int testIx = 0; testIx < tests.size(); testIx++) {
-      auto& t = tests[testIx];
-      auto nsIx = testsIxs[testIx][runIx];
-      printf("%s%.3f", 0 != testIx ? "," : "",
-          t.ns[nsIx] / (double)testIndexes.size());
-    }
-  }
-  printf("\n");
+  for (int runIx = 0; runIx < nSamples; runIx++, std::cout << '\n')
+    for (int testIx = 0; testIx < tests.size(); testIx++)
+      printf("%s%.3f", 0 != testIx ? "," : "", tests[testIx].ns[runIx]);
 }

@@ -18,15 +18,18 @@ HEADERS=oracle.h interpolate.h benchmark.h bin.h lin.h util.h div.h
 OBJ=
 
 FILE=input/uniform.1000.7
+N_THREADS=1
 #BENCHMARKS=bsEq bs bsLin_32 isRecurse isLin_1 isLin_2 oracle isSub
 #BENCHMARKS=isRecurse isFp isFp_slow isLin_1 isLin_1_slow bs
 #BENCHMARKS=isFp isFp_slow isIDiv
 #BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
-BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
+BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
+RUN=./search $(FILE) $(N_THREADS) $(BENCHMARKS)
 
 .PHONY: run search debug d_lin lin splines
 run: release $(FILE)
-	./search $(FILE) $(BENCHMARKS)
+	$(RUN)
+	
 
 release : CXXFLAGS += -ffast-math -O3 -DNDEBUG
 release : search
@@ -35,7 +38,7 @@ release : search
 
 debug : CXXFLAGS += -O0
 debug : search $(FILE)
-	gdb --args ./$@ $(FILE) $(BENCHMARKS)
+	gdb --args $(RUN)
 
 # add release identifier for object files
 %.o: %.cc
