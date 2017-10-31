@@ -23,7 +23,7 @@ N_THREADS=1
 #BENCHMARKS=isRecurse isFp isFp_slow isLin_1 isLin_1_slow bs
 #BENCHMARKS=isFp isFp_slow isIDiv
 #BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
-BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
+BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
 RUN=./search $(FILE) $(N_THREADS) $(BENCHMARKS)
 
 .PHONY: run search debug d_lin lin splines

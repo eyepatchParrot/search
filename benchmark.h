@@ -16,7 +16,6 @@
 struct TestStats {
   std::string name;
   std::vector<double> ns;
-  std::vector<double> thdAvg;
   bool ok;
 };
 
@@ -45,45 +44,40 @@ TestStats benchmark(
     const int nThreads = 1) {
   S search(input, indexes);
   constexpr int nRuns = N_RUNS;
-  TestStats ts;
+  TestStats ts{.ok=true, .ns = std::vector<double>(nRuns*nThreads)};
+  std::vector<int> t_ok(nThreads);
 
-  // vals is shuffled, so can't use it. Maybe shuffle indices and use that
-  // next time
-  std::vector<Key> vals(indexes.size());
-  for (int i = 0; i < vals.size(); i++)
-    vals[i] = input[indexes[i]];
+  const std::vector<Key> vals = std::move([&]() {
+    std::vector<Key> vals;
+    vals.reserve(indexes.size());
+    for (int i : indexes) vals.push_back(input[i]);
+    return vals; }());
   
   // get verification info
-  auto expSum = 0UL;
-  for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
-  ts.thdAvg.resize(nThreads);
-#pragma omp parallel num_threads(nThreads)
+  const auto expSum = [&indexes,&vals](){
+    auto expSum = 0UL;
+    for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
+    return expSum; }();
+#pragma omp parallel num_threads(nThreads) firstprivate(vals) shared(ts)
   {
-    std::vector<double> ns(nRuns, 0);
+    const int tid = omp_get_thread_num();
     auto valSum = 0UL;
     for (int runIx = 0; runIx < nRuns; runIx++) {
       auto t0 = std::chrono::steady_clock::now();
-      //double t0 = omp_get_wtime();
 
       for (int i = 0; i < vals.size(); i++) {
         auto val = search(vals[i]);
         valSum += val;
         assert(val == vals[i]);
       }
+
       auto t1 = std::chrono::steady_clock::now();
-      //double t1 = omp_get_wtime();
-      //ns[runIx] = (t1-t0) * 1e9/ (double)vals.size();
-      ns[runIx] = (std::chrono::nanoseconds(t1-t0)).count() / (double)vals.size();
+      ts.ns[(tid*nRuns)+runIx] = (std::chrono::nanoseconds(t1-t0)).count() / (double)vals.size();
     }
-#pragma omp barrier
-    ts.thdAvg[omp_get_thread_num()] = std::accumulate(ns.begin(), ns.end(), 0.0) / ns.size();
-#pragma omp single
-    {
-      ts.ns = std::move(ns);
-      ts.ok = valSum == expSum;
-    }
+    t_ok[tid] = valSum == expSum;
   }
-  //std::cerr << "Mode " << mode(ts.ns) << " min " << *std::min_element(ts.ns.begin(), ts.ns.end()) << " mean " << ts.thdAvg[0] << '\n';
+  for (auto ok : t_ok) ts.ok = ts.ok && !!(ok);
+  //std::cerr << "Mode " << mode(ts.ns) << '\n';
   return ts;
 }
 

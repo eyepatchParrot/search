@@ -34,6 +34,7 @@ class Oracle {
 
   Key operator()(const Key x) {
     Index k = i[j++];
+    assert(a[k] == x);
     j = j >= i.size() ? 0 : j;
     return a[k] == x ? a[k] : -1;
   }
