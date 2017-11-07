@@ -7,15 +7,8 @@
 template <int roll=2>
 class LinearSIMD {
   template <bool reverse=false>
-    static int64_t linSIMD(const int64_t* arr, const int64_t guessIx, const int64_t x) {
+  static int64_t aligned(const int64_t *ptr, int64_t i, const int64_t x) {
       auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
-      auto ptr = arr;
-      auto i = guessIx;
-      auto misalignment = ((uintptr_t)(ptr+i) & 31)/sizeof(int64_t);
-      for (int j = 0; j < 4*roll; j++)
-        if (reverse? (arr[i-j] <= x) : arr[i+j] >= x) return reverse? i-j : i+j;
-      i = reverse? (i-4*(roll-1) - misalignment) : i + 4*roll - misalignment;
-      // 32-aligned main loop                                                          
       for (;;i = reverse?(i-16) : i+16) {
         assert(i<1032);
         assert(i>-32);
@@ -38,6 +31,17 @@ class LinearSIMD {
         if (msk2) return reverse? (i + 4 - _lzcnt_u32(msk2) / 8 - 2 * 4) : i + _tzcnt_u32(msk2) / 8 + 2 * 4;
         if (msk3) return reverse? (i + 4 - _lzcnt_u32(msk3) / 8 - 3 * 4) : i + _tzcnt_u32(msk3) / 8 + 3 * 4;
       }
+  }
+
+  template <bool reverse=false>
+    static int64_t linSIMD(const int64_t* arr, const int64_t guessIx, const int64_t x) {
+      auto ptr = arr;
+      auto i = guessIx;
+      auto misalignment = ((uintptr_t)(ptr+i) & 31)/sizeof(int64_t);
+      for (int j = 0; j < 4*roll; j++)
+        if (reverse? (arr[i-j] <= x) : arr[i+j] >= x) return reverse? i-j : i+j;
+      i = reverse? (i-4*(roll-1) - misalignment) : i + 4*roll - misalignment;
+      return aligned<reverse>(arr, i, x);
     }
 public:
     static int64_t forward(const int64_t* a, const int64_t guessIx, const int64_t x) {
