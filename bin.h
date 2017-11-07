@@ -20,6 +20,7 @@ class Binary {
   PaddedVector<> A;
   int lg_v;
 
+  __attribute__((always_inline))
   Key bsEq(const Key x) {
     unsigned l = 0;
     unsigned r = A.size();
@@ -41,6 +42,7 @@ class Binary {
   }
 
   // https://pvk.ca/Blog/2015/11/29/retrospective-on-binary-search-and-on-compression-slash-compilation/
+  __attribute__((always_inline))
   auto bsLin(const Key x) {
     auto n = A.size();
     auto a = A.begin();
@@ -70,6 +72,8 @@ class Binary {
     lg_v=0;
     for (auto n = A.size();n > MIN_EQ_SZ; n -= (n/2)) lg_v++;
   }
+
+  __attribute__((always_inline))
   Key operator()(const Key x) {
     switch (f) {
       case BsFn::BS_EQ:
