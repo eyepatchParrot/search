@@ -10,8 +10,6 @@ class LinearSIMD {
   static int64_t aligned(const int64_t *ptr, int64_t i, const int64_t x) {
       auto vecXX = reverse? _mm256_set1_epi64x(x): _mm256_set1_epi64x(x-1);
       for (;;i = reverse?(i-16) : i+16) {
-        assert(i<1032);
-        assert(i>-32);
         auto sign = reverse?-1:1;
         auto av0 = _mm256_load_si256((__m256i*)(ptr + i + sign*0));
         auto av1 = _mm256_load_si256((__m256i*)(ptr + i + sign*4));

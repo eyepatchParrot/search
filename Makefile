@@ -12,18 +12,19 @@ ifdef SUBSET_SIZE
 endif
 
 CXX=clang++
-CXXFLAGS=-fopenmp -Wall -std=c++1z -fno-omit-frame-pointer -ggdb -march=native $(DEFINES)
+CXXFLAGS=-fopenmp -ffast-math -Wall -std=c++1z -fno-omit-frame-pointer -ggdb -march=native $(DEFINES)
 LIB=-I$(HOME)/include -L$(HOME)/lib  
 HEADERS=oracle.h interpolate.h benchmark.h bin.h lin.h util.h div.h
 OBJ=
 
-FILE=input/uniform.1000.7
+FILE=input/uniform.10000.0
 N_THREADS=1
 #BENCHMARKS=bsEq bs bsLin_32 isRecurse isLin_1 isLin_2 oracle isSub
 #BENCHMARKS=isRecurse isFp isFp_slow isLin_1 isLin_1_slow bs
 #BENCHMARKS=isFp isFp_slow isIDiv
 #BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
 BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
+BENCHMARKS=binary-linear interpolation-linear
 #BENCHMARKS=interpolation-recurse interpolation-err interpolation-linear-fp
 #BENCHMARKS=interpolation-recurse interpolation-linear-fp
 RUN=./search $(FILE) $(N_THREADS) $(BENCHMARKS)
@@ -31,9 +32,8 @@ RUN=./search $(FILE) $(N_THREADS) $(BENCHMARKS)
 .PHONY: run search debug d_lin lin splines
 run: release $(FILE)
 	$(RUN)
-	
 
-release : CXXFLAGS += -ffast-math -O3 -DNDEBUG
+release : CXXFLAGS += -O3 -DNDEBUG
 release : search
 
 #release : LDFLAGS += -flto -L$(HOME)/llvm/lib

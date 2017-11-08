@@ -54,9 +54,9 @@ TestStats benchmark(
     return vals; }());
   
   // get verification info
-  const auto expSum = [&indexes,&vals](){
+  const auto expSum = [&vals](){
     auto expSum = 0UL;
-    for (auto j=0;j<nRuns;j++) for (auto i : indexes) expSum += vals[i];
+    for (auto j=0;j<nRuns;j++) for (auto v : vals) expSum += v;
     return expSum; }();
 #pragma omp parallel num_threads(nThreads) firstprivate(vals) shared(ts)
   {
