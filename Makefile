@@ -17,7 +17,9 @@ LIB=-I$(HOME)/include -L$(HOME)/lib
 HEADERS=oracle.h interpolate.h benchmark.h bin.h lin.h util.h div.h
 OBJ=
 
-FILE=input/uniform.10000.0
+N_INTS=1000
+SEED=42
+
 N_THREADS=1
 #BENCHMARKS=bsEq bs bsLin_32 isRecurse isLin_1 isLin_2 oracle isSub
 #BENCHMARKS=isRecurse isFp isFp_slow isLin_1 isLin_1_slow bs
@@ -27,10 +29,10 @@ BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolat
 BENCHMARKS=binary-linear interpolation-linear
 #BENCHMARKS=interpolation-recurse interpolation-err interpolation-linear-fp
 #BENCHMARKS=interpolation-recurse interpolation-linear-fp
-RUN=./search $(FILE) $(N_THREADS) $(BENCHMARKS)
+RUN=./search $(N_INTS) $(SEED) $(N_THREADS) $(BENCHMARKS)
 
 .PHONY: run search debug d_lin lin splines
-run: release $(FILE)
+run: release
 	$(RUN)
 
 release : CXXFLAGS += -O3 -DNDEBUG
@@ -39,7 +41,7 @@ release : search
 #release : LDFLAGS += -flto -L$(HOME)/llvm/lib
 
 debug : CXXFLAGS += -O0
-debug : search $(FILE)
+debug : search
 	gdb --args $(RUN)
 
 # add release identifier for object files
@@ -75,13 +77,3 @@ splines: splines.cc
 
 clean:
 	rm -f ./search ./debug ./splines ./lin
-
-# https://www.gnu.org/software/make/manual/make.html#Overriding
-DISTRIBUTION=uniform
-ARRAY_SIZE=1000
-.PHONY: input
-input: $(foreach distr,$(DISTRIBUTION),$(foreach sz,$(ARRAY_SIZE),input/$(distr).$(sz)))
-
-# get the suffix and drop the pre-pended dot.
-input/%:
-	python gendata.py $(subst .,,$(suffix $(basename $*))) $(basename $(basename $*)) > $@

@@ -17,36 +17,56 @@
 #include <x86intrin.h>
 #include <unordered_map>
 
-// ./x fileName nThds [benchmarks ...]
+std::vector<Key> randInts(int n, long seed) {
+  std::mt19937_64 rng(seed);
+  std::uniform_int_distribution<Key> dist(1, (1L<<63) - 2);
+  std::vector<Key> v(n);
+  for (auto& x : v) x = dist(rng);
+  return v;
+}
+
+// ./x datasetSz seed nThds [benchmarks ...]
 int main(int argc, char *argv[]) {
+  if (3 >= argc) return -1;
+
   using std::istream_iterator;
-  constexpr int seed = 42;
 
-  if (2 >= argc) return -1;
-
-  std::string fileName = argv[1];
-  int nThreads = atoi(argv[2]);
+  int argi = 1;
+  int datasetSz = atoi(argv[argi++]);
+  long seed = atol(argv[argi++]);
+  int nThreads = atoi(argv[argi++]);
   std::vector<std::string> benchmarks;
-  for (int i = 3; i < argc; i++) benchmarks.push_back(argv[i]);
+  while (argi < argc) benchmarks.push_back(argv[argi++]);
 
-  std::cerr << fileName << '\n';
+  std::cerr << datasetSz << ' ' << seed << '\n';
 
-  std::ifstream f(fileName);
-  
-  int nNums;
-  f >> nNums;
-  assert(nNums != 0);
-  auto input = std::vector<Key>(istream_iterator<Key>(f), istream_iterator<Key>());
-  int nGets = SUBSET_SIZE < 1 ? input.size() : SUBSET_SIZE;
+  int nGets = SUBSET_SIZE < 1 ? datasetSz : SUBSET_SIZE;
 
   // permute the items
+  //std::vector<Key> input;
+  auto input = randInts(datasetSz, seed);
   std::vector<int> testIndexes(nGets);
   {
-    std::vector<int> allIndexes(input.size());
-    std::iota(allIndexes.begin(), allIndexes.end(), 0);
-    std::shuffle(allIndexes.begin(), allIndexes.end(), std::mt19937{seed});
-    std::copy_n(allIndexes.begin(), nGets, testIndexes.begin());
+    //auto rndInput = randInts(datasetSz, seed);
+    // It should be faster to do three sorts than a sort and a search all
+    // even with the copies
+    std::vector<std::tuple<Key, int, int>> input_ix(input.size());
+    for (int i = 0; i < input.size(); i++)
+      input_ix[i] = std::make_tuple(input[i], i, 0);
+    std::sort(input_ix.begin(), input_ix.end());
+    assert(std::is_sorted(input_ix.begin(), input_ix.end()));
+
+    for (int i = 0; i < input.size(); i++)
+      std::get<2>(input_ix[i]) = i;
+    for (int i = 0; i < input.size(); i++) input[i] = std::get<0>(input_ix[i]);
+
+    auto cmp = [](auto _i_, auto _j_) { return std::get<1>(_i_) < std::get<1>(_j_); };
+    std::sort(input_ix.begin(), input_ix.end(), cmp);
+    assert(std::is_sorted(input_ix.begin(), input_ix.end(), cmp));
+
+    for (int i = 0; i < nGets; i++) testIndexes[i] = std::get<2>(input_ix[i]);
   }
+  assert(std::is_sorted(input.begin(), input.end()));
 
   std::unordered_map<std::string, Benchmark*> benchmarkFns{
     { "interpolation-naive", benchmark<InterpolationNaive>},
@@ -66,7 +86,7 @@ int main(int argc, char *argv[]) {
   for (auto& benchmark : benchmarks) {
     TestStats ts = benchmarkFns[benchmark](input, testIndexes, nThreads); 
     if (!ts.ok)
-      std::cerr << "mess up " << fileName << ' ' << benchmark << '\n';
+      std::cerr << "mess up " << seed << ' ' << benchmark << '\n';
     ts.name = benchmark;
     tests.push_back(ts);
   }
