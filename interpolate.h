@@ -79,6 +79,7 @@ protected:
 template <class Interpolate = IBase::Lut
          ,int nIter = 1
          ,class Linear = LinearSIMD<>
+         ,int guardOff=0
          >
 class Interpolation : public IBase {
   Interpolate interpolate;
@@ -96,14 +97,17 @@ class Interpolation : public IBase {
       else if (a[mid] > x) right = mid-1;
       else return a[mid];
       if (left == right) return a[left];
-      
+
       assert(left<right);
       mid = interpolate(x, left, right);
-      if (mid+1 >= right) return a[Linear::reverse(a, right, x)];
-      else if (mid-1 <= left) return a[Linear::forward(a, left, x)];
+      if (nIter < 0) { 
+        if (mid+guardOff >= right) return a[Linear::reverse(a, right, x)];
+        else if (mid-guardOff <= left) return a[Linear::forward(a, left, x)];
+      }
       assert(mid >= left); assert(mid <= right);
     }
 
+    // TODO consider putting guards here to auto linear search
     if (a[mid] > x) return a[Linear::reverse(a, mid - 1, x)];
     return a[Linear::forward(a, mid, x)];
   }
