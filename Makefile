@@ -27,6 +27,7 @@ N_THREADS=1
 #BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
 BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
 BENCHMARKS=binary-linear interpolation-linear
+BENCHMARKS=binary-naive b-for-0 b-for-1 b-for-2 b-for-3 b-for-4
 #BENCHMARKS=interpolation-recurse interpolation-err interpolation-linear-fp
 #BENCHMARKS=interpolation-recurse interpolation-linear-fp
 RUN=./search $(N_INTS) $(SEED) $(N_THREADS) $(BENCHMARKS)
