@@ -145,13 +145,13 @@ class Interpolation : public IBase {
 
 
 using InterpolationNaive = Interpolation<IBase::Float<>,IBase::Recurse, LinearUnroll<>>;
-using InterpolationRecurse = Interpolation<IBase::Float<IBase::Precompute>,IBase::Recurse,LinearUnroll<>>;
+using InterpolationPrecompute = Interpolation<IBase::Float<IBase::Precompute>,IBase::Recurse,LinearUnroll<>>;
 using InterpolationLinearFp = Interpolation<IBase::Float<IBase::Precompute>>;
 using InterpolationLinear = Interpolation<>;
 using InterpolationLinearSave = Interpolation<IBase::Lut<true>>;
-using InterpolationIDiv = Interpolation<IBase::IntDiv> ;
-using InterpolationLin_2 = Interpolation<IBase::Lut<>,2>;
 using InterpolationLinearSub = Interpolation<IBase::Lut<true, false>>;
-using B1 = Interpolation<IBase::Lut<true>, IBase::Recurse, LinearUnroll<>, 0, true> ;
-using B0 = Interpolation<IBase::Float<IBase::Precompute>, IBase::Recurse, LinearUnroll<>, 0, true> ;
+//using InterpolationIDiv = Interpolation<IBase::IntDiv> ;
+//using InterpolationLin_2 = Interpolation<IBase::Lut<>,2>;
+//using B1 = Interpolation<IBase::Lut<true>, IBase::Recurse, LinearUnroll<>, 0, true> ;
+//using B0 = Interpolation<IBase::Float<IBase::Precompute>, IBase::Recurse, LinearUnroll<>, 0, true> ;
 #endif

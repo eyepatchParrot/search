@@ -28,11 +28,7 @@ N_THREADS=1
 #BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
 BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
 BENCHMARKS=binary-linear interpolation-linear
-BENCHMARKS=binary-size b-4-noeq interpolation-linear b0 b1 b2
-BENCHMARKS=binary-size b-sz-pow b0 b1 b2
-BENCHMARKS=b0 b1
-#BENCHMARKS=interpolation-recurse interpolation-err interpolation-linear-fp
-#BENCHMARKS=interpolation-recurse interpolation-linear-fp
+BENCHMARKS=i-precompute i-lin-save b-sz-4 b-sz-lin
 RUN=./search $(N_INTS) $(SEED) $(N_THREADS) $(BENCHMARKS)
 
 .PHONY: run search debug d_lin lin splines

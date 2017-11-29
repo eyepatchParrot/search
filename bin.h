@@ -72,7 +72,7 @@ template <int MIN_EQ_SZ = 32
 ,bool useN = true
 ,bool useFor = true
 ,typename Index = unsigned long
-,class Linear = LinearSIMD<>
+,class Linear = LinearUnroll<>
 >
 class BinarySize {
   PaddedVector<> A;
@@ -156,11 +156,14 @@ using BinaryNoEq = BinaryLR<1, false, false>;
 using BinaryFor = BinaryLR<1, true, true>;
 using BinaryForNoEq = BinaryLR<1, false, true>;
 using BinaryLinLR = BinaryLR<32, false, true>;
+
 using BinarySizeRecurse = BinarySize<1, false, false> ;
 using BinarySizePow = BinarySize<1, true, false>;
-using BinarySizeFor = BinarySize<1, false, true>;
+//using BinarySizeFor = BinarySize<1, false, true>;
 using BinarySizeForPow = BinarySize<1, true, true>;
 using BinaryLinSize = BinarySize<32, true, true> ;
-using BinaryLinear = BinarySize<>;
+
+using B0 = BinaryLinSize;
+using B1 = BinarySize<32, true, true, unsigned long, LinearUnroll<>>;
 
 #endif
