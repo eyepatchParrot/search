@@ -161,9 +161,6 @@ using BinarySizePow = BinarySize<1, true, false>;
 using BinarySizeFor = BinarySize<1, false, true>;
 using BinarySizeForPow = BinarySize<1, true, true>;
 using BinaryLinSize = BinarySize<32, true, true> ;
-using B2 = BinarySizeRecurse;
-using B1 = BinarySizeForPow;
-using B0 = BinaryLinSize;
 using BinaryLinear = BinarySize<>;
 
 #endif

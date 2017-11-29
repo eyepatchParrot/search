@@ -7,6 +7,13 @@
 
 #include <vector>
 
+#if IACA == 1
+#include <iacaMarks.h>
+#else
+#define IACA_START 
+#define IACA_END 
+#endif
+
 class IBase {
 public:
   using Index = int64_t;
@@ -15,23 +22,30 @@ public:
   static constexpr int Recurse = -1;
   static constexpr bool Precompute = true;
 
+  template <bool saveFirst = false, bool sub = true>
   struct Lut {
     // maybe want a.size() since we truncate
-    Lut(const PadVec& a) : A(a), lgScale(lg(A.size() - 1)), 
-    d_range_width((DivLut::Divisor((A.back() - A[0]) >>  lgScale) << lgScale) 
-        / (A.size() - 1)) {}
+    Lut(const PadVec& a) : A(a), lgScale(lg(A.size() - 1)), a0(A[0]) {
+      if (sub) {
+        d_range_width = (DivLut::Divisor((A.back() - A[0]) >>  lgScale) << lgScale) / (A.size() - 1);
+      } else {
+        d_range_width = (DivLut::Divisor(A.back() >> lgScale) << lgScale) / (A.size() - 1);
+      }
+    }
 
     const PadVec& A;
     int lgScale;
     DivLut::Divisor d_range_width;
     DivLut divisors;
+    Key a0;
 
     Index operator()(const Key x, const Index left, const Index right) {
       return left + (Key)(((x - A[left]) >> lgScale) * (right-left)) /
         divisors[(A[right] - A[left]) >> lgScale];
     }
     Index operator()(const Key x) {
-      return (uint64_t)(x - A[0]) / d_range_width;
+      uint64_t d = sub? (x - (saveFirst? a0 : A[0])) : x;
+      return d / d_range_width;
     }
   };
   template <bool precompute=false>
@@ -76,23 +90,26 @@ protected:
 };
 
 
-template <class Interpolate = IBase::Lut
+template <class Interpolate = IBase::Lut<>
          ,int nIter = 1
-         ,class Linear = LinearSIMD<>
+         ,class Linear = LinearUnroll<>
          ,int guardOff=0
+         ,bool savePtr=false
          >
 class Interpolation : public IBase {
   Interpolate interpolate;
+  const Key* a0;
 
   __attribute__((always_inline))
   auto is(const Key x) {
     Index left = 0;
     Index right = A.size() - 1;
-    auto a = A.begin();
     assert(A.size() >= 1);
+    auto a = savePtr? a0 : A.begin();
 
     Index mid = interpolate(x);
     for (int i = 1; (nIter < 0 ? true : i < nIter); i++) {
+      IACA_START
       if (a[mid] < x) left = mid+1;
       else if (a[mid] > x) right = mid-1;
       else return a[mid];
@@ -101,18 +118,26 @@ class Interpolation : public IBase {
       assert(left<right);
       mid = interpolate(x, left, right);
       if (nIter < 0) { 
+        IACA_END
         if (mid+guardOff >= right) return a[Linear::reverse(a, right, x)];
         else if (mid-guardOff <= left) return a[Linear::forward(a, left, x)];
       }
       assert(mid >= left); assert(mid <= right);
     }
 
-    if (a[mid] > x) return a[Linear::reverse(a, mid - 1, x)];
-    return a[Linear::forward(a, mid, x)];
+    if (a[mid] > x) {
+    //IACA_END
+      auto r = a[Linear::reverse(a, mid - 1, x)];
+      return r;
+    } else {
+    //IACA_END
+      auto r = a[Linear::forward(a, mid, x)];
+      return r;
+    }
   }
 
   public:
-  Interpolation(const std::vector<Key>& v, const std::vector<int>& indexes) : IBase(v), interpolate(A) { }
+  Interpolation(const std::vector<Key>& v, const std::vector<int>& indexes) : IBase(v), interpolate(A), a0(A.cbegin()) { }
 
   __attribute__((always_inline))
   Key operator()(const Key x) { return is(x); }
@@ -123,7 +148,10 @@ using InterpolationNaive = Interpolation<IBase::Float<>,IBase::Recurse, LinearUn
 using InterpolationRecurse = Interpolation<IBase::Float<IBase::Precompute>,IBase::Recurse,LinearUnroll<>>;
 using InterpolationLinearFp = Interpolation<IBase::Float<IBase::Precompute>>;
 using InterpolationLinear = Interpolation<>;
+using InterpolationLinearSave = Interpolation<IBase::Lut<true>>;
 using InterpolationIDiv = Interpolation<IBase::IntDiv> ;
-using InterpolationLin_2 = Interpolation<IBase::Lut,2>;
-using InterpolationSub = Interpolation<IBase::Lut,1>;
+using InterpolationLin_2 = Interpolation<IBase::Lut<>,2>;
+using InterpolationLinearSub = Interpolation<IBase::Lut<true, false>>;
+using B1 = Interpolation<IBase::Lut<true>, IBase::Recurse, LinearUnroll<>, 0, true> ;
+using B0 = Interpolation<IBase::Float<IBase::Precompute>, IBase::Recurse, LinearUnroll<>, 0, true> ;
 #endif
