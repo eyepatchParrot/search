@@ -15,7 +15,7 @@ using SearchFn = int64_t(const Key*, int64_t, Key);
 
 #ifndef N_RUNS
 #ifndef NDEBUG
-#define N_RUNS 5000
+#define N_RUNS 5
 #else
 #define N_RUNS 5000
 #endif

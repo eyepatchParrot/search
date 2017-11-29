@@ -69,22 +69,34 @@ int main(int argc, char *argv[]) {
   assert(std::is_sorted(input.begin(), input.end()));
 
   std::unordered_map<std::string, Benchmark*> benchmarkFns{
-    { "interpolation-naive", benchmark<InterpolationNaive>},
-      { "interpolation-recurse", benchmark<InterpolationRecurse>},
-      { "binary-naive", benchmark<BinaryNaive> },
-      { "b-for-0", benchmark<BFor0> },
-      { "b-for-1", benchmark<BFor1> },
-      { "b-for-2", benchmark<BFor2> },
-      { "b-for-3", benchmark<BFor3> },
-      { "b-for-4", benchmark<BFor4> },
-      { "binary-size", benchmark<BinarySizeRecurse> },
-      { "binary-linear", benchmark<BinaryLinear> },
-      { "interpolation-linear-fp", benchmark<InterpolationLinearFp> },
-      { "isIDiv", benchmark<InterpolationIDiv> },
-      { "isLin_2", benchmark<InterpolationLin_2> },
-      { "isSub", benchmark<InterpolationSub> },
-      { "oracle", benchmark<Oracle> },
-      { "interpolation-linear", benchmark<InterpolationLinear>}
+    //{ "interpolation-naive", benchmark<InterpolationNaive>},
+      //{ "interpolation-recurse", benchmark<InterpolationRecurse>},
+      //{ "binary-naive", benchmark<BinaryNaive> },
+			//{ "b-over", benchmark<BinaryOver    > },
+			//{ "b-noeq", benchmark<BinaryNoEq    > },
+			//{ "b-4", benchmark<BinaryFor     > },
+			//{ "b-4-noeq", benchmark<BinaryForNoEq > },
+      //{ "b-lin-lr", benchmark<BinaryLinLR> },
+      //{ "b-sz", benchmark<BinarySizeRecurse> },
+      //{ "b-sz-4", benchmark<BinarySizeFor> },
+      //{ "b-sz-pow", benchmark<BinarySizePow> },
+      //{ "b-lin-sz", benchmark<BinaryLinSize> },
+      //{ "b-lin-sz-pow", benchmark<BinaryLinSizePow> },
+
+      //{ "binary-size", benchmark<BinarySizeRecurse> },
+      //{ "b-sz-pow", benchmark<BinarySizePow> },
+      { "b0", benchmark<B0> },
+      { "b1", benchmark<B1> },
+      //{ "b2", benchmark<B2> },
+
+      //{ "binary-linear", benchmark<BinaryLinear> },
+      //{ "interpolation-linear-fp", benchmark<InterpolationLinearFp> },
+      //{ "isIDiv", benchmark<InterpolationIDiv> },
+      //{ "isLin_2", benchmark<InterpolationLin_2> },
+      //{ "isSub", benchmark<InterpolationSub> },
+      //{ "oracle", benchmark<Oracle> },
+      //{ "interpolation-linear", benchmark<InterpolationLinear>}
+      { "", benchmark<B0> }
   };
 
   std::vector<TestStats> tests;

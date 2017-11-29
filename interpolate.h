@@ -107,7 +107,6 @@ class Interpolation : public IBase {
       assert(mid >= left); assert(mid <= right);
     }
 
-    // TODO consider putting guards here to auto linear search
     if (a[mid] > x) return a[Linear::reverse(a, mid - 1, x)];
     return a[Linear::forward(a, mid, x)];
   }

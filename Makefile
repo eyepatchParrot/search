@@ -12,10 +12,11 @@ ifdef SUBSET_SIZE
 endif
 
 CXX=clang++
-CXXFLAGS=-fopenmp -ffast-math -Wall -std=c++1z -fno-omit-frame-pointer -ggdb -march=native $(DEFINES)
-LIB=-I$(HOME)/include -L$(HOME)/lib  
+CXXFLAGS=-fopenmp -ffast-math -Wall -std=c++1z -fno-omit-frame-pointer -ggdb -march=native $(DEFINES) -I$(HOME)/iaca/include
+LIB=-I$(HOME)/include -L$(HOME)/lib  -I$(HOME)/iaca/include
 HEADERS=oracle.h interpolate.h benchmark.h bin.h lin.h util.h div.h
 OBJ=
+IACA=0
 
 N_INTS=1000
 SEED=42
@@ -27,7 +28,9 @@ N_THREADS=1
 #BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
 BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
 BENCHMARKS=binary-linear interpolation-linear
-BENCHMARKS=binary-naive b-for-0 b-for-1 b-for-2 b-for-3 b-for-4
+BENCHMARKS=binary-size b-4-noeq interpolation-linear b0 b1 b2
+BENCHMARKS=binary-size b-sz-pow b0 b1 b2
+BENCHMARKS=b0 b1
 #BENCHMARKS=interpolation-recurse interpolation-err interpolation-linear-fp
 #BENCHMARKS=interpolation-recurse interpolation-linear-fp
 RUN=./search $(N_INTS) $(SEED) $(N_THREADS) $(BENCHMARKS)
@@ -35,6 +38,10 @@ RUN=./search $(N_INTS) $(SEED) $(N_THREADS) $(BENCHMARKS)
 .PHONY: run search debug d_lin lin splines
 run: release
 	$(RUN)
+
+iaca : IACA=1
+iaca: release
+	~/iaca/bin/iaca -mark 0 -arch HSW search
 
 release : CXXFLAGS += -O3 -DNDEBUG
 release : search
@@ -50,7 +57,7 @@ debug : search
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 search: $(OBJ) $(HEADERS)
-	$(CXX) $(CXXFLAGS) search.cc $(OBJ) -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) search.cc $(OBJ) -o $@ $(LDFLAGS) -DIACA=$(IACA)
 
 div: div.cc
 	$(DEBUG) $< -o $@

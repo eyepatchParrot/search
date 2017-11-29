@@ -13,6 +13,13 @@
 #include <algorithm>
 #include <chrono>
 
+#if IACA == 1
+#include <iacaMarks.h>
+#else
+#define IACA_START 
+#define IACA_END 
+#endif
+
 struct TestStats {
   std::string name;
   std::vector<double> ns;
@@ -58,6 +65,8 @@ TestStats benchmark(
     auto expSum = 0UL;
     for (auto j=0;j<nRuns;j++) for (auto v : vals) expSum += v;
     return expSum; }();
+  auto runSum = 0UL;
+  for (auto v : vals) runSum += v;
 #pragma omp parallel num_threads(nThreads) firstprivate(vals) shared(ts)
   {
     const int tid = omp_get_thread_num();
