@@ -1,3 +1,4 @@
+#N_RUNS=10
 ifdef NSORT
 	DEFINES += -DNSORT
 endif
@@ -18,7 +19,7 @@ HEADERS=oracle.h interpolate.h benchmark.h bin.h lin.h util.h div.h
 OBJ=
 IACA=0
 
-N_INTS=1000
+N_INTS=1000000
 SEED=42
 
 N_THREADS=1
@@ -29,6 +30,7 @@ N_THREADS=1
 BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
 BENCHMARKS=binary-linear interpolation-linear
 BENCHMARKS=i-precompute i-lin-save b-sz-4 b-sz-lin
+BENCHMARKS=b0 b1 b0 b0 b1 b1
 RUN=./search $(N_INTS) $(SEED) $(N_THREADS) $(BENCHMARKS)
 
 .PHONY: run search debug d_lin lin splines
@@ -47,6 +49,9 @@ release : search
 debug : CXXFLAGS += -O0
 debug : search
 	gdb --args $(RUN)
+
+dump : CXXFLAGS += -DDUMP_INPUT
+dump : search
 
 # add release identifier for object files
 %.o: %.cc
@@ -77,7 +82,6 @@ splines: splines.cc
 	$(PROFILE) $< -o $@
 	#$(DEBUG) $< -o $@
 	#gdb --args ./splines -f input/uniform.1000.0 -n 2
-
 
 clean:
 	rm -f ./search ./debug ./splines ./lin

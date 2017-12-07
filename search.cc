@@ -45,6 +45,11 @@ int main(int argc, char *argv[]) {
   // permute the items
   //std::vector<Key> input;
   auto input = randInts(datasetSz, seed);
+#ifdef DUMP_INPUT
+  for (auto x : input) std::cout << x << '\n';
+  return 0;
+#endif
+
   std::vector<int> testIndexes(nGets);
   {
     //auto rndInput = randInts(datasetSz, seed);
@@ -69,14 +74,19 @@ int main(int argc, char *argv[]) {
   assert(std::is_sorted(input.begin(), input.end()));
 
   std::unordered_map<std::string, Benchmark*> benchmarkFns{
-      {"i-naive", benchmark<InterpolationNaive>},
+    {"b0", benchmark<B0>},
+      {"b1", benchmark<B1>},
+      {"i", benchmark<InterpolationNaive>},
       {"i-precompute", benchmark<InterpolationPrecompute>},
+      {"i-recurse-lut", benchmark<InterpolationRecurseLut>},
+      {"i-recurse-guard", benchmark<InterpolationRecurseGuard>},
+      {"i-recurse-3", benchmark<InterpolationRecurse3>},
       {"i-lin-fp", benchmark<InterpolationLinearFp> },
       {"i-lin", benchmark<InterpolationLinear>},
       {"i-lin-save", benchmark<InterpolationLinearSave>},
       {"i-lin-sub", benchmark<InterpolationLinearSub>},
 
-      {"b-lr-naive", benchmark<BinaryNaive>},
+      {"b-lr", benchmark<BinaryNaive>},
       {"b-lr-over", benchmark<BinaryOver>},
       {"b-lr-noeq", benchmark<BinaryNoEq>},
       {"b-lr-4", benchmark<BinaryFor>},

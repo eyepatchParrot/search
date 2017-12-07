@@ -22,10 +22,14 @@ public:
   static constexpr int Recurse = -1;
   static constexpr bool Precompute = true;
 
-  template <bool saveFirst = false, bool sub = true>
+  template <bool saveFirst = false, bool sub = true, bool fold=false>
   struct Lut {
     // maybe want a.size() since we truncate
     Lut(const PadVec& a) : A(a), lgScale(lg(A.size() - 1)), a0(A[0]) {
+      if (fold) {
+        divisors /= (A.size() - 1);
+        //divisors <<= lgScale;
+      }
       if (sub) {
         d_range_width = (DivLut::Divisor((A.back() - A[0]) >>  lgScale) << lgScale) / (A.size() - 1);
       } else {
@@ -40,6 +44,7 @@ public:
     Key a0;
 
     Index operator()(const Key x, const Index left, const Index right) {
+      if (fold) return left + (Key)((x - A[left]) >> lgScale) / divisors[(A[right] - A[left])];
       return left + (Key)(((x - A[left]) >> lgScale) * (right-left)) /
         divisors[(A[right] - A[left]) >> lgScale];
     }
@@ -146,12 +151,15 @@ class Interpolation : public IBase {
 
 using InterpolationNaive = Interpolation<IBase::Float<>,IBase::Recurse, LinearUnroll<>>;
 using InterpolationPrecompute = Interpolation<IBase::Float<IBase::Precompute>,IBase::Recurse,LinearUnroll<>>;
+using InterpolationRecurseGuard = Interpolation<IBase::Float<IBase::Precompute>, IBase::Recurse, LinearUnroll<>, 32, false>;
+using InterpolationRecurse3 = Interpolation<IBase::Float<IBase::Precompute>, 3>;
+using InterpolationRecurseLut = Interpolation<IBase::Lut<true>, IBase::Recurse, LinearUnroll<>>;
 using InterpolationLinearFp = Interpolation<IBase::Float<IBase::Precompute>>;
 using InterpolationLinear = Interpolation<>;
 using InterpolationLinearSave = Interpolation<IBase::Lut<true>>;
 using InterpolationLinearSub = Interpolation<IBase::Lut<true, false>>;
 //using InterpolationIDiv = Interpolation<IBase::IntDiv> ;
 //using InterpolationLin_2 = Interpolation<IBase::Lut<>,2>;
-//using B1 = Interpolation<IBase::Lut<true>, IBase::Recurse, LinearUnroll<>, 0, true> ;
-//using B0 = Interpolation<IBase::Float<IBase::Precompute>, IBase::Recurse, LinearUnroll<>, 0, true> ;
+using B1 = Interpolation<IBase::Float<IBase::Precompute>, 2>;
+using B0 = InterpolationPrecompute;
 #endif

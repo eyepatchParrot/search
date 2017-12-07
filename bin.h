@@ -163,7 +163,7 @@ using BinarySizePow = BinarySize<1, true, false>;
 using BinarySizeForPow = BinarySize<1, true, true>;
 using BinaryLinSize = BinarySize<32, true, true> ;
 
-using B0 = BinaryLinSize;
-using B1 = BinarySize<32, true, true, unsigned long, LinearUnroll<>>;
+//using B0 = BinaryLinSize;
+//using B1 = BinarySize<32, true, true, unsigned long, LinearUnroll<>>;
 
 #endif
