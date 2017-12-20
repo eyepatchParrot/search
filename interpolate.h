@@ -121,7 +121,16 @@ class Interpolation : public IBase {
       if (left == right) return a[left];
 
       assert(left<right);
+      assert(left >= 0); assert(right < A.size());
       mid = interpolate(x, left, right);
+#ifndef NDEBUG
+      auto fp = IBase::Float<IBase::Precompute>(A);
+      auto d2 = (int)fp(x, left, right) - mid;
+      if (d2*d2 > 1) {
+        printf("%lu, %lu, %lu = %lu ~ %ld\n", x, left, right, mid, d2);
+      }
+#endif
+
       if (nIter < 0) { 
         IACA_END
         if (mid+guardOff >= right) return a[Linear::reverse(a, right, x)];
@@ -153,13 +162,14 @@ using InterpolationNaive = Interpolation<IBase::Float<>,IBase::Recurse, LinearUn
 using InterpolationPrecompute = Interpolation<IBase::Float<IBase::Precompute>,IBase::Recurse,LinearUnroll<>>;
 using InterpolationRecurseGuard = Interpolation<IBase::Float<IBase::Precompute>, IBase::Recurse, LinearUnroll<>, 32, false>;
 using InterpolationRecurse3 = Interpolation<IBase::Float<IBase::Precompute>, 3>;
-using InterpolationRecurseLut = Interpolation<IBase::Lut<true>, IBase::Recurse, LinearUnroll<>>;
+using InterpolationRecurseLut = Interpolation<IBase::Lut<>, IBase::Recurse, LinearUnroll<>, 32, false>;
 using InterpolationLinearFp = Interpolation<IBase::Float<IBase::Precompute>>;
 using InterpolationLinear = Interpolation<>;
+using i_simd = Interpolation<IBase::Lut<>, 1, LinearSIMD<>>;
 using InterpolationLinearSave = Interpolation<IBase::Lut<true>>;
 using InterpolationLinearSub = Interpolation<IBase::Lut<true, false>>;
 //using InterpolationIDiv = Interpolation<IBase::IntDiv> ;
 //using InterpolationLin_2 = Interpolation<IBase::Lut<>,2>;
-using B1 = Interpolation<IBase::Float<IBase::Precompute>, 2>;
-using B0 = InterpolationPrecompute;
+using B1 = InterpolationRecurseLut;
+using B0 = InterpolationRecurseGuard;
 #endif

@@ -19,7 +19,7 @@ HEADERS=oracle.h interpolate.h benchmark.h bin.h lin.h util.h div.h
 OBJ=
 IACA=0
 
-N_INTS=1000000
+N_INTS=1000
 SEED=42
 
 N_THREADS=1
@@ -29,8 +29,9 @@ N_THREADS=1
 #BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear oracle
 BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
 BENCHMARKS=binary-linear interpolation-linear
-BENCHMARKS=i-precompute i-lin-save b-sz-4 b-sz-lin
-BENCHMARKS=b0 b1 b0 b0 b1 b1
+BENCHMARKS=i-guard i-seq b-sz-lin i-simd
+#BENCHMARKS=b-lr b-lr-cond b-lr-over b-lr-noeq b-lr-for b-lr-noeq-for b-lr-lin
+#BENCHMARKS=b-sz b-sz-cond b-sz-noeq b-sz-for b-sz-noeq-for b-sz-pow b2 b-sz-lin
 RUN=./search $(N_INTS) $(SEED) $(N_THREADS) $(BENCHMARKS)
 
 .PHONY: run search debug d_lin lin splines
@@ -60,8 +61,8 @@ dump : search
 search: $(OBJ) $(HEADERS)
 	$(CXX) $(CXXFLAGS) search.cc $(OBJ) -o $@ $(LDFLAGS) -DIACA=$(IACA)
 
-div: div.cc
-	$(DEBUG) $< -o $@
+div: div.cc div.h
+	$(CXX) $(CXXFLAGS) $< -o $@
 
 asm: search.cc
 	$(PROFILE) -g2 -S $< -o $@.s

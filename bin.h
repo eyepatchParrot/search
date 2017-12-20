@@ -17,13 +17,14 @@
 #define IACA_END 
 #endif
 
-template <int MIN_EQ_SZ=1
-          ,bool TEST_EQ=true
-          ,bool FOR=false
-          ,bool OVERFLOW_MATH=false
-          ,typename Index = unsigned
-          ,class Linear = LinearUnroll<>
-          >
+template <bool RETURN_EARLY=true
+         ,bool TEST_EQ=true
+         ,bool FOR=false
+         ,bool OVERFLOW_MATH=false
+         ,int MIN_EQ_SZ=1
+         ,typename Index = unsigned
+         ,class Linear = LinearUnroll<>
+         >
 class BinaryLR {
   PaddedVector<> A;
   int lg_v;
@@ -43,13 +44,14 @@ class BinaryLR {
       //IACA_START
       assert(l <= r);    // ordering check
       assert(l+r >= r); // overflow check
-      Index m = OVERFLOW_MATH ? l + (r-l) / 2 : (l+r)/2;
+      Index m = OVERFLOW_MATH ? (l+r)/2 : l + (r-l) / 2 ;
       if (TEST_EQ) {
         if (A[m] < x) {
           l = m + 1;
         } else if (A[m] > x) {
           r = m;
         } else {
+          if (RETURN_EARLY) return A[m];
           l = r = m;
         }
       } else {
@@ -68,18 +70,20 @@ class BinaryLR {
   }
 };
 
-template <int MIN_EQ_SZ = 32
-,bool useN = true
-,bool useFor = true
-,typename Index = unsigned long
-,class Linear = LinearUnroll<>
->
-class BinarySize {
+template <bool RETURN_EARLY=true
+         ,bool TEST_EQ=true
+         ,bool FOR=false
+         ,bool POW_2=false
+         ,int MIN_EQ_SZ=1
+         ,typename Index = unsigned long
+         ,class Linear = LinearUnroll<>
+         >
+class BinarySz {
   PaddedVector<> A;
   int lg_v, lg_min;
 
   public:
-  BinarySize(const std::vector<Key>& _a, const std::vector<int>& indexes) : A(_a) {
+  BinarySz(const std::vector<Key>& _a, const std::vector<int>& indexes) : A(_a) {
     lg_v=lg_min=0;
     for (auto n = A.size();n > 1; n -= (n/2)) {
       lg_v++;
@@ -91,78 +95,70 @@ class BinarySize {
     Key operator()(const Key x) {
       Index n = A.size();
       auto a = A.begin();
-      Index leftIndex = 0L;
-      if (useFor) {
-        if (useN) {
-          Index mid = n - (1UL << (lg_v-1));
-          leftIndex = a[mid] <= x ? mid : leftIndex;
-            n -= mid;
-            // wrong # of iterations?
-            IACA_START
-              if (MIN_EQ_SZ == 1) {
+      Index left = 0L;
+      if (POW_2) {
+        Index mid = n - (1UL << (lg_v-1));
+        left = a[mid] <= x ? mid : left;
+        n -= mid;
+      }
+      // TODO how to set unroll = 4 if MIN_EQ_SZ > 1?, else 8?
+#define LOOP \
+        assert(left + n == A.size() || A[left + n] > x); \
+        assert(A[left] <= x); \
+        IACA_START \
+        Index half = n / 2; \
+        if (TEST_EQ) { \
+          if (x < a[left + half]) { \
+            n = half; \
+          } else if (a[left + half] < x) { \
+            left = left + half + 1; \
+            n = n - half - 1; \
+          } else { \
+            if (RETURN_EARLY) return a[left + half]; \
+            left += half; \
+            if (FOR) i = lg_min; else n = 0; \
+          } \
+        } else { \
+          left = a[left + half] <= x ? left + half : left; \
+          if (POW_2) n = half; \
+          else n -= half; \
+        } 
+      if (MIN_EQ_SZ == 1) {
 #pragma unroll(8)
-                for (int i = 1; i < lg_min; i++) {
-                  n/=2;
-                  assert(n == (1 << (lg_v-1)) >> i);
-                  leftIndex = a[leftIndex + n] <= x ? leftIndex + n : leftIndex;
-                }
-              } else {
-#pragma unroll(4)
-                for (int i = 1; i < lg_min; i++) {
-                  n/=2;
-                  assert(n == (1 << (lg_v-1)) >> i);
-                  leftIndex = a[leftIndex + n] <= x ? leftIndex + n : leftIndex;
-                }
-              }
-            IACA_END
-          assert(n == (1 << (lg_v-lg_min)));
-          assert(n == MIN_EQ_SZ);
-        } else {
-          IACA_START
-          for (int i = 0; i < lg_v; i++) {
-            Index half = n / 2;
-            n -= half;
-            Index mid = leftIndex+half;
-            leftIndex = a[mid] <= x ? mid : leftIndex;
-          }
-          IACA_END
+        for (int i = POW_2 ? 1 : 0; FOR ? i < lg_min : n > MIN_EQ_SZ; i++) {
+          LOOP
         }
       } else {
-				if (useN) {
-          Index mid = n - (1UL << (lg_v-1));
-					leftIndex = a[mid] <= x ? mid : leftIndex;
-          n -= mid;
-					//n = (1UL << (lg_v-1));
-				}
-				while (n > MIN_EQ_SZ) {
-          IACA_START
-          Index half = n / 2;
-          leftIndex = a[leftIndex + half] <= x ? leftIndex + half : leftIndex;
-          if (useN) n = half;
-					else n -= half;
+#pragma unroll(4)
+        for (int i = POW_2 ? 1 : 0; FOR ? i < lg_min : n > MIN_EQ_SZ; i++) {
+          LOOP
         }
       }
-      if (MIN_EQ_SZ == 1) return a[leftIndex];
 
-      Index guess = leftIndex + n/2;
+      IACA_END
+      if (MIN_EQ_SZ == 1) return a[left];
+
+      Index guess = left + n/2;
       if (a[guess] < x) return a[Linear::forward(a,guess+1,x)];
       else return a[Linear::reverse(a,guess,x)];
     }
 };
 
-using BinaryNaive = BinaryLR<1, true, false, true>;
-using BinaryOver = BinaryLR<1, true, false>;
-using BinaryNoEq = BinaryLR<1, false, false>;
-using BinaryFor = BinaryLR<1, true, true>;
-using BinaryForNoEq = BinaryLR<1, false, true>;
-using BinaryLinLR = BinaryLR<32, false, true>;
+using BinaryLRCond = BinaryLR<false>;
+using BinaryLROver = BinaryLR<false, true, false, true>;
+using BinaryLRNoEq = BinaryLR<false, false, false, true>;
+using BinaryLRFor = BinaryLR<false, true, true, true>;
+using BinaryLRNoEqFor = BinaryLR<false, false, true, true>;
+using BinaryLRLin = BinaryLR<false, false, true, true, 32>;
 
-using BinarySizeRecurse = BinarySize<1, false, false> ;
-using BinarySizePow = BinarySize<1, true, false>;
-//using BinarySizeFor = BinarySize<1, false, true>;
-using BinarySizeForPow = BinarySize<1, true, true>;
-using BinaryLinSize = BinarySize<32, true, true> ;
+using BinarySzCond = BinarySz<false>;
+using BinarySzNoEq = BinarySz<false, false>;
+using BinarySzFor = BinarySz<false, true, true>;
+using BinarySzNoEqFor = BinarySz<false, false, true>;
+using BinarySzPow = BinarySz<false, false, true, true>;
+using BinarySzLin = BinarySz<false, false, true, true, 32>;
 
+using B2 = BinarySz<false, false, false, true>;
 //using B0 = BinaryLinSize;
 //using B1 = BinarySize<32, true, true, unsigned long, LinearUnroll<>>;
 

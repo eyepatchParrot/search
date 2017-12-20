@@ -55,12 +55,10 @@ template <int n=8>
 class LinearUnroll {
   template <bool reverse=false>
     static int64_t linUnroll(const int64_t* a, int64_t m, int64_t k) {
-      //IACA_START
       for (;;m = (reverse?m-n:m+n)) {
         for (int i = 0; i < n; i++) {
-          assert(m+i < 1032); assert((m-i) > -32);
+          //assert(m+i < 1032); assert((m-i) > -32);
           if (reverse?(a[m-i]<=k):(a[m+i]>=k)){
-            //IACA_END
             return reverse?(m-i):(m+i);
           }
         }
