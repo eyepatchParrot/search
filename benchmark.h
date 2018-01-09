@@ -1,6 +1,12 @@
 #ifndef BENCHMARK_H
 #define BENCHMARK_H
 
+#include "oracle.h"
+#include "interpolate.h"
+#include "bin.h"
+#include "lin.h"
+#include "fib.h"
+
 #include "omp.h"
 #include <string>
 #include <vector>
@@ -87,6 +93,50 @@ TestStats benchmark(
   }
   for (auto ok : t_ok) ts.ok = ts.ok && !!(ok);
   //std::cerr << "Mode " << mode(ts.ns) << '\n';
+  return ts;
+}
+
+TestStats benchmark(
+    const std::vector<Key>& keys,
+    const std::vector<int>& indexes,
+    const int nThreads,
+    const std::string& name,
+    long seed) {
+  static std::unordered_map<std::string, Benchmark*> fns{
+    {"b0", benchmark<B0>},
+    {"b1", benchmark<B1>},
+    {"i", benchmark<InterpolationNaive>},
+    {"i-precompute", benchmark<InterpolationPrecompute>},
+    {"i-lut", benchmark<InterpolationRecurseLut>},
+    {"i-seq-fp", benchmark<InterpolationLinearFp> },
+    {"i-seq", benchmark<InterpolationLinear>},
+    {"i-guard", benchmark<InterpolationRecurseGuard>},
+    {"i-seq-simd", benchmark<i_simd>},
+
+    {"b-lr", benchmark<BinaryLR<>>},
+    {"b-lr-cond", benchmark<BinaryLRCond>},
+    {"b-lr-noeq", benchmark<BinaryLRNoEq>},
+    {"b-lr-for", benchmark<BinaryLRFor>},
+    {"b-lr-noeq-for", benchmark<BinaryLRNoEqFor>},
+    {"b-lr-over", benchmark<BinaryLROver>},
+    {"b-lr-lin", benchmark<BinaryLRLin>},
+
+    {"b-sz", benchmark<BinarySz<>>},
+    {"b-sz-cond", benchmark<BinarySzCond>},
+    {"b-sz-noeq", benchmark<BinarySzNoEq>},
+    {"b-sz-for", benchmark<BinarySzFor>},
+    {"b-sz-noeq-for", benchmark<BinarySzNoEqFor>},
+    {"b-sz-pow", benchmark<BinarySzPow>},
+    {"b-sz-lin", benchmark<BinarySzLin>},
+    {"b2", benchmark<B2>},
+    {"fib", benchmark<Fib>},
+
+    {"oracle", benchmark<Oracle> }
+  };
+  auto ts = fns[name](keys, indexes, nThreads);
+  if (!ts.ok)
+    std::cerr << "mess up " << seed << ' ' << name << '\n';
+  ts.name = name;
   return ts;
 }
 

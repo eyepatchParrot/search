@@ -1,10 +1,5 @@
-#include "oracle.h"
-#include "interpolate.h"
 #include "benchmark.h"
-#include "bin.h"
-#include "lin.h"
 #include "util.h"
-#include "fib.h"
 
 #include <algorithm>
 #include <assert.h>
@@ -85,46 +80,11 @@ int main(int argc, char *argv[]) {
   for (auto x : input) std::cout << x << '\n';
   return 0;
 #endif
-  std::unordered_map<std::string, Benchmark*> benchmarkFns{
-    {"b0", benchmark<B0>},
-      {"b1", benchmark<B1>},
-      {"i", benchmark<InterpolationNaive>},
-      {"i-precompute", benchmark<InterpolationPrecompute>},
-      {"i-lut", benchmark<InterpolationRecurseLut>},
-      {"i-seq-fp", benchmark<InterpolationLinearFp> },
-      {"i-seq", benchmark<InterpolationLinear>},
-      {"i-guard", benchmark<InterpolationRecurseGuard>},
-      {"i-seq-simd", benchmark<i_simd>},
-
-      {"b-lr", benchmark<BinaryLR<>>},
-      {"b-lr-cond", benchmark<BinaryLRCond>},
-      {"b-lr-noeq", benchmark<BinaryLRNoEq>},
-      {"b-lr-for", benchmark<BinaryLRFor>},
-      {"b-lr-noeq-for", benchmark<BinaryLRNoEqFor>},
-      {"b-lr-over", benchmark<BinaryLROver>},
-      {"b-lr-lin", benchmark<BinaryLRLin>},
-
-      {"b-sz", benchmark<BinarySz<>>},
-      {"b-sz-cond", benchmark<BinarySzCond>},
-      {"b-sz-noeq", benchmark<BinarySzNoEq>},
-      {"b-sz-for", benchmark<BinarySzFor>},
-      {"b-sz-noeq-for", benchmark<BinarySzNoEqFor>},
-      {"b-sz-pow", benchmark<BinarySzPow>},
-      {"b-sz-lin", benchmark<BinarySzLin>},
-      {"b2", benchmark<B2>},
-      {"fib", benchmark<Fib>},
-
-      {"oracle", benchmark<Oracle> }
-  };
 
   std::vector<TestStats> tests;
-  for (auto& benchmark : benchmarks) {
-    TestStats ts = benchmarkFns[benchmark](input.keys, input.indexes, n_threads); 
-    if (!ts.ok)
-      std::cerr << "mess up " << seed << ' ' << benchmark << '\n';
-    ts.name = benchmark;
-    tests.push_back(ts);
-  }
+  for (auto& benchmark_name : benchmarks)
+    tests.push_back(benchmark(
+          input.keys, input.indexes, n_threads, benchmark_name, seed));
 
   // print report
   for (int i = 0; i < benchmarks.size(); i++)
