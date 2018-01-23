@@ -6,6 +6,8 @@
 #include "padded_vector.h"
 
 #include <vector>
+#include <algorithm>
+#include <array>
 
 #if IACA == 1
 #include <iacaMarks.h>
@@ -94,7 +96,6 @@ protected:
   IBase(const std::vector<Key>& v) : A(v) {}
 };
 
-
 template <class Interpolate = IBase::Lut<>
          ,int nIter = 1
          ,class Linear = LinearUnroll<>
@@ -155,6 +156,69 @@ class Interpolation : public IBase {
 
   __attribute__((always_inline))
   Key operator()(const Key x) { return is(x); }
+};
+
+class InterpolationSet : public IBase {
+  static constexpr int vector_width = 8;
+  using RiseRun = double;
+  using KeyVector = std::array<Key, vector_width>;
+  using RiseRunVector = std::array<RiseRun, vector_width>;
+
+  static bool hit(Key x1, RiseRun rise_run, Key x2, Index y2) {
+    return (Index)(rise_run * (x2 - x1)) == y2;
+  }
+
+  KeyVector points;
+  std::vector<RiseRunVector> slopes;
+
+  struct Point {
+    Key x;
+    Index y;
+  };
+
+  RiseRun removeBestCoveringLine(const std::vector<Point>& set) {
+    assert(!set.empty());
+
+    Key x = A[0];
+    Index y = 0;
+
+    RiseRun best_rise_run = 0.0;
+    for (int i = 0, min_missed = set.size(); i < set.size(); i++) {
+      if (i == 0 && set[i].x == x) continue;
+      RiseRun rise_run = (RiseRun)(set[i].y - y) / (set[i].x - x);
+      for (int missed = 0, j = 0; missed < min_missed; j++) {
+        if (j == set.size()) {
+          min_missed = missed;
+          best_rise_run = rise_run;
+          break;
+        }
+        missed += !hit(x, rise_run, set[j].x, set[j].y);
+      }
+    }
+    std::remove_if(set.begin(), set.end(), [x, best_rise_run](auto point) {
+        return hit(x, best_rise_run, point.x, point.y); });
+    return best_rise_run;
+  }
+
+  public:
+    InterpolationSet(const std::vector<Key>& v, const std::vector<int>& indexes) : IBase(v), points(v.front()) {
+      /* Want to build a minimal set of lines that covers the entire set.
+       * First simplification is to always start from the leftmost point. Also
+       * look into allowing for other left points, but this reduces the time
+       * complexity.
+       *
+       * Greedily find each line by minimizing the number of missed points.
+       * By making it a minimization problem rather than a maximization problem,
+       * you can do early stopping.
+       */
+      std::vector<Point> uncovered(v.size());
+      for (int i = 0; i < v.size(); i++) uncovered.emplace_back({.x=v[i], .y=i});
+
+      for (int vector_index = 0; !uncovered.empty(); vector_index = (vector_index + 1) % vector_width) {
+        if (vector_index == 0) slopes.emplace_back(lines.front().slope);
+        slopes.back()[vector_index] = removeBestCoveringLine(uncovered);
+      }
+    }
 };
 
 

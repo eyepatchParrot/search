@@ -30,6 +30,7 @@ N_THREADS=1
 BENCHMARKS=binary-naive binary-size binary-linear interpolation-naive interpolation-recurse interpolation-linear-fp interpolation-linear
 BENCHMARKS=binary-linear interpolation-linear
 BENCHMARKS=i-guard i-seq b-sz-lin i-simd
+BENCHMARKS=fib
 #BENCHMARKS=b-lr b-lr-cond b-lr-over b-lr-noeq b-lr-for b-lr-noeq-for b-lr-lin
 #BENCHMARKS=b-sz b-sz-cond b-sz-noeq b-sz-for b-sz-noeq-for b-sz-pow b2 b-sz-lin
 RUN=./search $(N_INTS) $(SEED) $(N_THREADS) $(BENCHMARKS)
