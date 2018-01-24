@@ -8,6 +8,9 @@
 #include <vector>
 #include <algorithm>
 #include <array>
+#include <iostream>
+#include <iterator>
+#include <cmath>
 
 #if IACA == 1
 #include <iacaMarks.h>
@@ -164,8 +167,14 @@ class InterpolationSet : public IBase {
   using KeyVector = std::array<Key, vector_width>;
   using RiseRunVector = std::array<RiseRun, vector_width>;
 
+  static RiseRun interpolate(Key x1, RiseRun rise_run, Key x2) {
+    return rise_run * (x2 - x1);
+  }
+
   static bool hit(Key x1, RiseRun rise_run, Key x2, Index y2) {
-    return (Index)(rise_run * (x2 - x1)) == y2;
+    // note that once the interpolation exceeds the size of the set, since it
+    // is non-decreasing, it will miss all remaining elements.
+    return (Index)interpolate(x1, rise_run, x2) == y2;
   }
 
   KeyVector points;
@@ -176,16 +185,19 @@ class InterpolationSet : public IBase {
     Index y;
   };
 
-  RiseRun removeBestCoveringLine(const std::vector<Point>& set) {
+  RiseRun removeBestCoveringLine(std::vector<Point>& set) {
     assert(!set.empty());
 
-    Key x = A[0];
     Index y = 0;
+    Key x = A[y];
 
     RiseRun best_rise_run = 0.0;
-    for (int i = 0, min_missed = set.size(); i < set.size(); i++) {
+    for (int k = 0, min_missed = set.size(); k < set.size(); k++) {
+      int i = set.size() - k - 1;
       if (i == 0 && set[i].x == x) continue;
-      RiseRun rise_run = (RiseRun)(set[i].y - y) / (set[i].x - x);
+      auto epsilon = (set[i].x - x) / 2e19; // will never increase the floor function, but
+      // should help with float arithmetic
+      RiseRun rise_run = (RiseRun)(set[i].y - y + epsilon) / (set[i].x - x);
       for (int missed = 0, j = 0; missed < min_missed; j++) {
         if (j == set.size()) {
           min_missed = missed;
@@ -195,13 +207,17 @@ class InterpolationSet : public IBase {
         missed += !hit(x, rise_run, set[j].x, set[j].y);
       }
     }
-    std::remove_if(set.begin(), set.end(), [x, best_rise_run](auto point) {
-        return hit(x, best_rise_run, point.x, point.y); });
+    auto old_size = set.size();
+    set.resize(std::distance(set.begin(),
+        std::remove_if(set.begin(), set.end(), [x, best_rise_run](auto point) {
+        return hit(x, best_rise_run, point.x, point.y); })));
+    std::cout << (old_size - set.size()) << '\n';
     return best_rise_run;
   }
 
   public:
-    InterpolationSet(const std::vector<Key>& v, const std::vector<int>& indexes) : IBase(v), points(v.front()) {
+    InterpolationSet(const std::vector<Key>& v, const std::vector<int>& indexes) : IBase(v) {
+      for (auto& p : points) p = v.front();
       /* Want to build a minimal set of lines that covers the entire set.
        * First simplification is to always start from the leftmost point. Also
        * look into allowing for other left points, but this reduces the time
@@ -211,14 +227,20 @@ class InterpolationSet : public IBase {
        * By making it a minimization problem rather than a maximization problem,
        * you can do early stopping.
        */
-      std::vector<Point> uncovered(v.size());
-      for (int i = 0; i < v.size(); i++) uncovered.emplace_back({.x=v[i], .y=i});
+      std::vector<Point> uncovered;
+      for (int i = 0; i < v.size(); i++) uncovered.emplace_back(Point{.x=v[i], .y=i});
 
-      for (int vector_index = 0; !uncovered.empty(); vector_index = (vector_index + 1) % vector_width) {
-        if (vector_index == 0) slopes.emplace_back(lines.front().slope);
+      for (int vector_index = 0; !uncovered.empty();
+          vector_index = (vector_index + 1) % vector_width) {
+        if (vector_index == 0) slopes.emplace_back();
         slopes.back()[vector_index] = removeBestCoveringLine(uncovered);
       }
+      std::cout << slopes.size() * vector_width << '\n';
+      for (auto slope_v : slopes) for (auto slope : slope_v)
+        std::cout << slope << '\n';
     }
+
+    Key operator()(const Key x) { return x; }
 };
 
 

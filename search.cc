@@ -35,8 +35,9 @@ struct Input {
   std::vector<Key> keys;
   std::vector<int> indexes;
 
-  Input(std::vector<Key> nums, int n_gets) : keys(nums.size()), indexes(n_gets) {
+  Input(std::vector<Key> nums, int n_gets) : indexes(n_gets) {
 #ifdef DUMP_INPUT
+    keys = nums;
     return;
 #endif
 
@@ -49,6 +50,7 @@ struct Input {
       key_indexes[i].sorted_index = i;
 
     // save the sorted input while it's here
+    keys.resize(nums.size());
     for (auto i = 0; i < nums.size(); i++) keys[i] = key_indexes[i].key;
 
     std::sort(key_indexes.begin(), key_indexes.end(), [](auto l, auto r) {
@@ -77,7 +79,7 @@ int main(int argc, char *argv[]) {
   Input input(randNums(datasetSz, seed), nGets);
 
 #ifdef DUMP_INPUT
-  for (auto x : input) std::cout << x << '\n';
+  for (auto x : input.keys) std::cout << x << '\n';
   return 0;
 #endif
 

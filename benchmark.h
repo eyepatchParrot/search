@@ -130,6 +130,7 @@ TestStats benchmark(
     {"b-sz-lin", benchmark<BinarySzLin>},
     {"b2", benchmark<B2>},
     {"fib", benchmark<Fib>},
+    {"set", benchmark<InterpolationSet>},
 
     {"oracle", benchmark<Oracle> }
   };
