@@ -27,8 +27,9 @@ public:
 
   static constexpr int Recurse = -1;
   static constexpr bool Precompute = true;
+  static constexpr bool Intercept = true;
 
-  template <bool saveFirst = false, bool sub = true, bool fold=false>
+  template <bool normalize=false, bool saveFirst = false, bool sub = true, bool fold=false>
   struct Lut {
     // maybe want a.size() since we truncate
     Lut(const PadVec& a) : A(a), lgScale(lg(A.size() - 1)), a0(A[0]) {
@@ -41,12 +42,15 @@ public:
       } else {
         d_range_width = (DivLut::Divisor(A.back() >> lgScale) << lgScale) / (A.size() - 1);
       }
+      intercept = -round((double)A[0] * (A.size() - 1) / (A.back() - A[0]));
+      std::cout << "intercept " << intercept << '\n';
     }
 
     const PadVec& A;
     int lgScale;
     DivLut::Divisor d_range_width;
     DivLut divisors;
+    Index intercept;
     Key a0;
 
     Index operator()(const Key x, const Index left, const Index right) {
@@ -55,6 +59,7 @@ public:
         divisors[(A[right] - A[left]) >> lgScale];
     }
     Index operator()(const Key x) {
+      if (normalize) return x / d_range_width + intercept;
       uint64_t d = sub? (x - (saveFirst? a0 : A[0])) : x;
       return d / d_range_width;
     }
@@ -79,6 +84,25 @@ public:
           (*this)(x, 0, A.size()-1);
       }
     };
+
+  struct FloatIntercept {
+    FloatIntercept(const PadVec& a) : A(a), slope( (double)(A.size() - 1) /
+        (double)(A.back() - A[0])) {
+      intercept = - slope * A[0];
+      std::cout << "fp-intercept " << intercept << '\n';
+    }
+
+    const PadVec& A;
+    const double slope;
+    double intercept;
+
+    Index operator()(const Key x, const Index left, const Index right) {
+      return left + ((double)x - (double)(A[left])) /
+        (double)(A[right] - A[left]) * (double)(right-left);
+    }
+
+    Index operator()(const Key x) { return x * slope + intercept; }
+  };
 
   struct IntDiv {
     IntDiv(const PadVec& a) : A(a),
@@ -169,6 +193,7 @@ class Interpolation : public IBase {
 // changes over time and how it's different in the moment. However, since the
 // goal is to hit a point or not at all, how to achieve that objective is less
 // clear
+template <bool SLOPE_INTERCEPT=false>
 class InterpolationSet : public IBase {
   static constexpr int vector_width = 8;
   using RiseRun = double;
@@ -226,26 +251,38 @@ class InterpolationSet : public IBase {
   Line removeBestCoveringLine(std::vector<Point>& set) {
     assert(!set.empty());
 
-    Point left{.x=A[0], .y=0};
+    Line best_line(Point{.x=A[0], .y=0});
 
-    // TODO refactor this so that making it a two dimensional loop is more
-    // straightforward
-    Line best_line(left);
-    // evaluate the quality of each line
-    for (auto [right, min_missed] = std::tuple{set.crbegin(), set.size()}; right != set.crend(); right++) {
-      if (right->x == left.x) continue;
-      Line line(left, *right); // should include epsilon
-      int missed = numMissed(set, min_missed, line);
-      if (missed < min_missed) {
-        best_line = line;
-        min_missed = missed;
+    if (SLOPE_INTERCEPT) {
+      for (auto [left, min_missed] = std::tuple{set.cbegin(), set.size()};
+          left != set.cend(); left++) {
+        for (auto right : set) {
+          if (right.x == left->x) continue;
+          Line line(*left, right); // should include epsilon
+          int missed = numMissed(set, min_missed, line);
+          if (missed < min_missed) {
+            best_line = line;
+            min_missed = missed;
+          }
+        }
+      }
+    } else {
+      Point left{.x=A[0], .y=0};
+      for (auto [right, min_missed] = std::tuple{set.crbegin(), set.size()}; right != set.crend(); right++) {
+        if (right->x == left.x) continue;
+        Line line(left, *right); // should include epsilon
+        int missed = numMissed(set, min_missed, line);
+        if (missed < min_missed) {
+          best_line = line;
+          min_missed = missed;
+        }
       }
     }
     auto old_size = set.size();
     set.resize(std::distance(set.begin(),
         std::remove_if(set.begin(), set.end(), [best_line](auto point) {
         return hit(best_line, point); })));
-    std::cout << (old_size - set.size()) << '\n';
+    //std::cout << (old_size - set.size()) << '\n';
     return best_line;
   }
 
@@ -271,9 +308,9 @@ class InterpolationSet : public IBase {
         slopes.back()[vector_index] = l.slope;
         // TODO add intercepts
       }
-      std::cout << slopes.size() * vector_width << '\n';
-      for (auto slope_v : slopes) for (auto slope : slope_v)
-        std::cout << slope << '\n';
+      //std::cout << slopes.size() * vector_width << '\n';
+      //for (auto slope_v : slopes) for (auto slope : slope_v)
+      //  std::cout << slope << '\n';
     }
 
     Key operator()(const Key x) { return x; }
@@ -286,10 +323,12 @@ using InterpolationRecurseGuard = Interpolation<IBase::Float<IBase::Precompute>,
 using InterpolationRecurse3 = Interpolation<IBase::Float<IBase::Precompute>, 3>;
 using InterpolationRecurseLut = Interpolation<IBase::Lut<>, IBase::Recurse, LinearUnroll<>, 32, false>;
 using InterpolationLinearFp = Interpolation<IBase::Float<IBase::Precompute>>;
+using i_seq_fp_intercept = Interpolation<IBase::FloatIntercept>;
 using InterpolationLinear = Interpolation<>;
+using i_seq_intercept = Interpolation<IBase::Lut<IBase::Intercept>>;
 using i_simd = Interpolation<IBase::Lut<>, 1, LinearSIMD<>>;
-using InterpolationLinearSave = Interpolation<IBase::Lut<true>>;
-using InterpolationLinearSub = Interpolation<IBase::Lut<true, false>>;
+//using InterpolationLinearSave = Interpolation<IBase::Lut<true>>;
+//using InterpolationLinearSub = Interpolation<IBase::Lut<true, false>>;
 //using InterpolationIDiv = Interpolation<IBase::IntDiv> ;
 //using InterpolationLin_2 = Interpolation<IBase::Lut<>,2>;
 using B1 = InterpolationRecurseLut;
