@@ -11,6 +11,7 @@
 #include <iostream>
 #include <iterator>
 #include <cmath>
+#include <tuple>
 
 #if IACA == 1
 #include <iacaMarks.h>
@@ -161,58 +162,91 @@ class Interpolation : public IBase {
   Key operator()(const Key x) { return is(x); }
 };
 
+// consider using AI techniques to find a good solution without trying to find
+// an optimal solution. The connection from the points and slopes isn't clear
+// with regards to how it impacts the solution. One thing to notice is that
+// for each solution, we can consider how the distance from the interpolation
+// changes over time and how it's different in the moment. However, since the
+// goal is to hit a point or not at all, how to achieve that objective is less
+// clear
 class InterpolationSet : public IBase {
   static constexpr int vector_width = 8;
   using RiseRun = double;
   using KeyVector = std::array<Key, vector_width>;
   using RiseRunVector = std::array<RiseRun, vector_width>;
 
-  static RiseRun interpolate(Key x1, RiseRun rise_run, Key x2) {
-    return rise_run * (x2 - x1);
-  }
-
-  static bool hit(Key x1, RiseRun rise_run, Key x2, Index y2) {
-    // note that once the interpolation exceeds the size of the set, since it
-    // is non-decreasing, it will miss all remaining elements.
-    return (Index)interpolate(x1, rise_run, x2) == y2;
-  }
-
-  KeyVector points;
-  std::vector<RiseRunVector> slopes;
-
   struct Point {
     Key x;
     Index y;
   };
 
-  RiseRun removeBestCoveringLine(std::vector<Point>& set) {
+  struct Line {
+    Index intercept;
+    RiseRun slope;
+    Line(Point a, Point b) {
+      // want mx + b form
+      // have (ax, ay), (bx, by)
+      // m = (by - ay) / (bx - ax)
+      // m * ax + b = ay
+      // b = ay - m * ax
+      // will never increase the floor function, but should help with float
+      // arithmetic
+      //auto epsilon = (b.x - a.x) / 2e19; 
+      auto epsilon = 0.0;
+      slope = (RiseRun)(b.y - a.y + epsilon) / (b.x - a.x);
+      intercept = a.y - slope * a.x;
+    }
+    Line(Point p) : intercept(p.y), slope(0.0) { }
+  };
+
+  static Index interpolate(Line line, Key x) {
+    return line.intercept + (Index)(line.slope * x);
+  }
+
+  static bool hit(Line line, Point point) {
+    // note that once the interpolation exceeds the size of the set, since it
+    // is non-decreasing, it will miss all remaining elements.
+    return interpolate(line, point.x) == point.y;
+  }
+
+  KeyVector points;
+  std::vector<RiseRunVector> slopes;
+
+
+  int numMissed(const std::vector<Point>& set, int cap, Line line) {
+    // return the number missed up to cap
+    int missed = 0;
+    for (int j = 0; missed < cap; j++) {
+      if (j == set.size()) return std::min(cap, missed);
+      missed += !hit(line, set[j]);
+    }
+    return missed;
+  }
+
+  Line removeBestCoveringLine(std::vector<Point>& set) {
     assert(!set.empty());
 
-    Index y = 0;
-    Key x = A[y];
+    Point left{.x=A[0], .y=0};
 
-    RiseRun best_rise_run = 0.0;
-    for (int k = 0, min_missed = set.size(); k < set.size(); k++) {
-      int i = set.size() - k - 1;
-      if (i == 0 && set[i].x == x) continue;
-      auto epsilon = (set[i].x - x) / 2e19; // will never increase the floor function, but
-      // should help with float arithmetic
-      RiseRun rise_run = (RiseRun)(set[i].y - y + epsilon) / (set[i].x - x);
-      for (int missed = 0, j = 0; missed < min_missed; j++) {
-        if (j == set.size()) {
-          min_missed = missed;
-          best_rise_run = rise_run;
-          break;
-        }
-        missed += !hit(x, rise_run, set[j].x, set[j].y);
+    // TODO refactor this so that making it a two dimensional loop is more
+    // straightforward
+    Line best_line(left);
+    // evaluate the quality of each line
+    for (auto [right, min_missed] = std::tuple{set.crbegin(), set.size()}; right != set.crend(); right++) {
+      if (right->x == left.x) continue;
+      Line line(left, *right); // should include epsilon
+      int missed = numMissed(set, min_missed, line);
+      if (missed < min_missed) {
+        best_line = line;
+        min_missed = missed;
       }
     }
     auto old_size = set.size();
     set.resize(std::distance(set.begin(),
-        std::remove_if(set.begin(), set.end(), [x, best_rise_run](auto point) {
-        return hit(x, best_rise_run, point.x, point.y); })));
+        std::remove_if(set.begin(), set.end(), [best_line](auto point) {
+        return hit(best_line, point); })));
     std::cout << (old_size - set.size()) << '\n';
-    return best_rise_run;
+    return best_line;
   }
 
   public:
@@ -233,7 +267,9 @@ class InterpolationSet : public IBase {
       for (int vector_index = 0; !uncovered.empty();
           vector_index = (vector_index + 1) % vector_width) {
         if (vector_index == 0) slopes.emplace_back();
-        slopes.back()[vector_index] = removeBestCoveringLine(uncovered);
+        Line l = removeBestCoveringLine(uncovered);
+        slopes.back()[vector_index] = l.slope;
+        // TODO add intercepts
       }
       std::cout << slopes.size() * vector_width << '\n';
       for (auto slope_v : slopes) for (auto slope : slope_v)
