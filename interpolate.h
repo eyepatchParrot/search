@@ -32,7 +32,7 @@ public:
   };
 
   struct Line {
-    Index intercept;
+    double intercept;
     RiseRun slope;
     Line(Point a, Point b) {
       // want mx + b form
@@ -112,14 +112,25 @@ public:
       }
     };
 
+  template <bool pickLine=false>
   struct FloatIntercept {
-    FloatIntercept(const PadVec& a) : A(a), slope( (double)(A.size() - 1) /
-        (double)(A.back() - A[0])) {
-      intercept = - slope * A[0];
+    FloatIntercept(const PadVec& a) : A(a) {
+      std::vector<Point> set;
+      for (int i = 0; i < A.size(); i++) set.push_back(Point{.x=A[i], .y=i});
+      auto l = pickLine? bestLine(set, set.size() * set.size(),
+          [](const std::vector<Point>& set, long cap, Line line) {
+          for (long j = 0, distance=0; distance < cap; j++) {
+            if (j == set.size()) return std::min(cap, distance);
+            distance += labs((long)IBase::interpolate(line, set[j].x) - (long)set[j].y);
+          }
+          return cap; })
+        : Line{Point{.x=A[0], .y=0}, Point{.x=A.back(), .y=(int)A.size()-1}};
+      intercept = l.intercept;
+      slope = l.slope;
     }
 
     const PadVec& A;
-    const double slope;
+    double slope;
     double intercept;
 
     Index operator()(const Key x, const Index left, const Index right) {
@@ -149,18 +160,19 @@ protected:
 
   IBase(const std::vector<Key>& v) : A(v) {}
 
-  using UtilityFn = int(const std::vector<Point>&, int, Line);
+  //using UtilityFn = int(const std::vector<Point>&, int, Line);
 
   // goal is to minimize utility
-  Line bestLineFrom(const Point p, const std::vector<Point>& set, int cap,
+  template <typename UtilityFn>
+  static Line bestLineFrom(const Point p, const std::vector<Point>& set, long cap,
       UtilityFn fn) {
     Line best_line(p);
     for (auto [right, min_missed] = std::tuple{set.crbegin(), cap};
-        right != set.crend(); right++) {
-      if (right->x == p.x) continue;
+        right->x > p.x; right++) {
       Line line(p, *right); // should include epsilon
-      int missed = fn(set, min_missed, line);
+      long missed = fn(set, min_missed, line);
       if (missed < min_missed) {
+        //std::cout << missed << ' ' << p.x << ',' << p.y << ' ' << right->x << ',' << right->y << '\n';
         best_line = line;
         min_missed = missed;
       }
@@ -169,12 +181,13 @@ protected:
   }
 
   // goal is to minimize utility
-  Line bestLine(const std::vector<Point>& set, UtilityFn fn) {
+  template <typename UtilityFn>
+  static Line bestLine(const std::vector<Point>& set, long cap, UtilityFn fn) {
     Line best_line(set[0]);
-    for (auto [left, min_utility] = std::tuple{set.cbegin(), set.size()};
+    for (auto [left, min_utility] = std::tuple{set.cbegin(), cap};
         left != set.cend(); left++) {
       Line line = bestLineFrom(*left, set, min_utility, fn);
-      int utility = fn(set, min_utility, line);
+      long utility = fn(set, min_utility, line);
       if (utility < min_utility) {
         best_line = line;
         min_utility = utility;
@@ -182,7 +195,9 @@ protected:
     }
     return best_line;
   }
-
+  static Index interpolate(Line line, Key x) {
+    return line.intercept + (Index)(line.slope * x);
+  }
 };
 
 template <class Interpolate = IBase::Lut<>
@@ -260,10 +275,6 @@ class InterpolationSet : public IBase {
   using KeyVector = std::array<Key, vector_width>;
   using RiseRunVector = std::array<RiseRun, vector_width>;
 
-  static Index interpolate(Line line, Key x) {
-    return line.intercept + (Index)(line.slope * x);
-  }
-
   static bool hit(Line line, Point point) {
     // note that once the interpolation exceeds the size of the set, since it
     // is non-decreasing, it will miss all remaining elements.
@@ -273,9 +284,9 @@ class InterpolationSet : public IBase {
   KeyVector points;
   std::vector<RiseRunVector> slopes;
 
-  static int numMissed(const std::vector<Point>& set, int cap, Line line) {
+  static int numMissed(const std::vector<Point>& set, long cap, Line line) {
     // return the number missed up to cap
-    int missed = 0;
+    long missed = 0;
     for (int j = 0; missed < cap; j++) {
       if (j == set.size()) return std::min(cap, missed);
       missed += !hit(line, set[j]);
@@ -286,7 +297,7 @@ class InterpolationSet : public IBase {
   Line removeBestCoveringLine(std::vector<Point>& set) {
     assert(!set.empty());
 
-    auto best_line = SLOPE_INTERCEPT ? bestLine(set, numMissed)
+    auto best_line = SLOPE_INTERCEPT ? bestLine(set, set.size(), numMissed)
       : bestLineFrom(Point{.x=A[0], .y=0}, set, set.size(), numMissed);
     set.resize(std::distance(set.begin(),
         std::remove_if(set.begin(), set.end(), [best_line](auto point) {
@@ -332,7 +343,8 @@ using i_slope = Interpolation<IBase::Float<IBase::Precompute, true>, IBase::Recu
 using InterpolationRecurse3 = Interpolation<IBase::Float<IBase::Precompute>, 3>;
 using InterpolationRecurseLut = Interpolation<IBase::Lut<>, IBase::Recurse, LinearUnroll<>, 32, false>;
 using InterpolationLinearFp = Interpolation<IBase::Float<IBase::Precompute>>;
-using i_seq_fp_intercept = Interpolation<IBase::FloatIntercept>;
+using i_seq_fp_intercept = Interpolation<IBase::FloatIntercept<>>;
+using i_seq_fp_pick = Interpolation<IBase::FloatIntercept<true>>;
 using InterpolationLinear = Interpolation<>;
 using i_seq_intercept = Interpolation<IBase::Lut<IBase::Intercept>>;
 using i_simd = Interpolation<IBase::Lut<>, 1, LinearSIMD<>>;

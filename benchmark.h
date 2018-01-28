@@ -110,6 +110,7 @@ TestStats benchmark(
     {"i-lut", benchmark<InterpolationRecurseLut>},
     {"i-seq-fp", benchmark<InterpolationLinearFp> },
     {"i-seq-fp-intercept", benchmark<i_seq_fp_intercept> },
+    {"i-seq-fp-pick", benchmark<i_seq_fp_pick> },
     {"i-seq", benchmark<InterpolationLinear>},
     {"i-seq-intercept", benchmark<i_seq_intercept> },
     {"i-guard", benchmark<InterpolationRecurseGuard>},
