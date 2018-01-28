@@ -43,7 +43,6 @@ public:
         d_range_width = (DivLut::Divisor(A.back() >> lgScale) << lgScale) / (A.size() - 1);
       }
       intercept = -round((double)A[0] * (A.size() - 1) / (A.back() - A[0]));
-      std::cout << "intercept " << intercept << '\n';
     }
 
     const PadVec& A;
@@ -89,7 +88,6 @@ public:
     FloatIntercept(const PadVec& a) : A(a), slope( (double)(A.size() - 1) /
         (double)(A.back() - A[0])) {
       intercept = - slope * A[0];
-      std::cout << "fp-intercept " << intercept << '\n';
     }
 
     const PadVec& A;
@@ -238,7 +236,7 @@ class InterpolationSet : public IBase {
   std::vector<RiseRunVector> slopes;
 
 
-  int numMissed(const std::vector<Point>& set, int cap, Line line) {
+  static int numMissed(const std::vector<Point>& set, int cap, Line line) {
     // return the number missed up to cap
     int missed = 0;
     for (int j = 0; missed < cap; j++) {
@@ -248,41 +246,46 @@ class InterpolationSet : public IBase {
     return missed;
   }
 
+  using UtilityFn = int(const std::vector<Point>&, int, Line);
+
+  Line bestLineFrom(const Point p, const std::vector<Point>& set, int cap,
+      UtilityFn fn) {
+    Line best_line(p);
+    for (auto [right, min_missed] = std::tuple{set.crbegin(), cap};
+        right != set.crend(); right++) {
+      if (right->x == p.x) continue;
+      Line line(p, *right); // should include epsilon
+      int missed = fn(set, min_missed, line);
+      if (missed < min_missed) {
+        best_line = line;
+        min_missed = missed;
+      }
+    }
+    return best_line;
+  }
+
+  Line bestLine(const std::vector<Point>& set, UtilityFn fn) {
+    Line best_line(set[0]);
+    for (auto [left, min_missed] = std::tuple{set.cbegin(), set.size()};
+        left != set.cend(); left++) {
+      Line line = bestLineFrom(*left, set, min_missed, numMissed);
+      int missed = numMissed(set, min_missed, line);
+      if (missed < min_missed) {
+        best_line = line;
+        min_missed = missed;
+      }
+    }
+    return best_line;
+  }
+
   Line removeBestCoveringLine(std::vector<Point>& set) {
     assert(!set.empty());
 
-    Line best_line(Point{.x=A[0], .y=0});
-
-    if (SLOPE_INTERCEPT) {
-      for (auto [left, min_missed] = std::tuple{set.cbegin(), set.size()};
-          left != set.cend(); left++) {
-        for (auto right : set) {
-          if (right.x == left->x) continue;
-          Line line(*left, right); // should include epsilon
-          int missed = numMissed(set, min_missed, line);
-          if (missed < min_missed) {
-            best_line = line;
-            min_missed = missed;
-          }
-        }
-      }
-    } else {
-      Point left{.x=A[0], .y=0};
-      for (auto [right, min_missed] = std::tuple{set.crbegin(), set.size()}; right != set.crend(); right++) {
-        if (right->x == left.x) continue;
-        Line line(left, *right); // should include epsilon
-        int missed = numMissed(set, min_missed, line);
-        if (missed < min_missed) {
-          best_line = line;
-          min_missed = missed;
-        }
-      }
-    }
-    auto old_size = set.size();
+    auto best_line = SLOPE_INTERCEPT ? bestLine(set, numMissed)
+      : bestLineFrom(Point{.x=A[0], .y=0}, set, set.size(), numMissed);
     set.resize(std::distance(set.begin(),
         std::remove_if(set.begin(), set.end(), [best_line](auto point) {
         return hit(best_line, point); })));
-    //std::cout << (old_size - set.size()) << '\n';
     return best_line;
   }
 
