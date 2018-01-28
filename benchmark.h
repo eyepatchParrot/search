@@ -109,8 +109,11 @@ TestStats benchmark(
     {"i-precompute", benchmark<InterpolationPrecompute>},
     {"i-lut", benchmark<InterpolationRecurseLut>},
     {"i-seq-fp", benchmark<InterpolationLinearFp> },
+    {"i-seq-fp-intercept", benchmark<i_seq_fp_intercept> },
     {"i-seq", benchmark<InterpolationLinear>},
+    {"i-seq-intercept", benchmark<i_seq_intercept> },
     {"i-guard", benchmark<InterpolationRecurseGuard>},
+    {"i-slope", benchmark<i_slope>},
     {"i-seq-simd", benchmark<i_simd>},
 
     {"b-lr", benchmark<BinaryLR<>>},
@@ -130,7 +133,7 @@ TestStats benchmark(
     {"b-sz-lin", benchmark<BinarySzLin>},
     {"b2", benchmark<B2>},
     {"fib", benchmark<Fib>},
-    {"set", benchmark<InterpolationSet>},
+    //{"set", benchmark<InterpolationSet>},
 
     {"oracle", benchmark<Oracle> }
   };

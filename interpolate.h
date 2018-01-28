@@ -24,6 +24,32 @@ class IBase {
 public:
   using Index = int64_t;
   using PadVec = PaddedVector<>;
+  using RiseRun = double;
+
+  struct Point {
+    Key x;
+    Index y;
+  };
+
+  struct Line {
+    Index intercept;
+    RiseRun slope;
+    Line(Point a, Point b) {
+      // want mx + b form
+      // have (ax, ay), (bx, by)
+      // m = (by - ay) / (bx - ax)
+      // m * ax + b = ay
+      // b = ay - m * ax
+      // will never increase the floor function, but should help with float
+      // arithmetic
+      //auto epsilon = (b.x - a.x) / 2e19; 
+      auto epsilon = 0.0;
+      slope = (RiseRun)(b.y - a.y + epsilon) / (b.x - a.x);
+      intercept = a.y - slope * a.x;
+    }
+    Line(Point p) : intercept(p.y), slope(0.0) { }
+  };
+
 
   static constexpr int Recurse = -1;
   static constexpr bool Precompute = true;
@@ -63,7 +89,7 @@ public:
       return d / d_range_width;
     }
   };
-  template <bool precompute=false>
+  template <bool precompute=false, bool sameSlope=false>
     struct Float {
       
       Float(const PadVec& a) : A(a), f_aL(A[0]),
@@ -74,6 +100,8 @@ public:
       const double f_width_range;
 
       Index operator()(const Key x, const Index left, const Index right) {
+        // TODO revisit when you choose the line
+        if (sameSlope) return left + ((double)x - (double)(A[left])) * f_width_range;
         return left + ((double)x - (double)(A[left])) /
           (double)(A[right] - A[left]) * (double)(right-left);
       }
@@ -120,6 +148,41 @@ protected:
   PadVec A;
 
   IBase(const std::vector<Key>& v) : A(v) {}
+
+  using UtilityFn = int(const std::vector<Point>&, int, Line);
+
+  // goal is to minimize utility
+  Line bestLineFrom(const Point p, const std::vector<Point>& set, int cap,
+      UtilityFn fn) {
+    Line best_line(p);
+    for (auto [right, min_missed] = std::tuple{set.crbegin(), cap};
+        right != set.crend(); right++) {
+      if (right->x == p.x) continue;
+      Line line(p, *right); // should include epsilon
+      int missed = fn(set, min_missed, line);
+      if (missed < min_missed) {
+        best_line = line;
+        min_missed = missed;
+      }
+    }
+    return best_line;
+  }
+
+  // goal is to minimize utility
+  Line bestLine(const std::vector<Point>& set, UtilityFn fn) {
+    Line best_line(set[0]);
+    for (auto [left, min_utility] = std::tuple{set.cbegin(), set.size()};
+        left != set.cend(); left++) {
+      Line line = bestLineFrom(*left, set, min_utility, fn);
+      int utility = fn(set, min_utility, line);
+      if (utility < min_utility) {
+        best_line = line;
+        min_utility = utility;
+      }
+    }
+    return best_line;
+  }
+
 };
 
 template <class Interpolate = IBase::Lut<>
@@ -194,33 +257,8 @@ class Interpolation : public IBase {
 template <bool SLOPE_INTERCEPT=false>
 class InterpolationSet : public IBase {
   static constexpr int vector_width = 8;
-  using RiseRun = double;
   using KeyVector = std::array<Key, vector_width>;
   using RiseRunVector = std::array<RiseRun, vector_width>;
-
-  struct Point {
-    Key x;
-    Index y;
-  };
-
-  struct Line {
-    Index intercept;
-    RiseRun slope;
-    Line(Point a, Point b) {
-      // want mx + b form
-      // have (ax, ay), (bx, by)
-      // m = (by - ay) / (bx - ax)
-      // m * ax + b = ay
-      // b = ay - m * ax
-      // will never increase the floor function, but should help with float
-      // arithmetic
-      //auto epsilon = (b.x - a.x) / 2e19; 
-      auto epsilon = 0.0;
-      slope = (RiseRun)(b.y - a.y + epsilon) / (b.x - a.x);
-      intercept = a.y - slope * a.x;
-    }
-    Line(Point p) : intercept(p.y), slope(0.0) { }
-  };
 
   static Index interpolate(Line line, Key x) {
     return line.intercept + (Index)(line.slope * x);
@@ -235,7 +273,6 @@ class InterpolationSet : public IBase {
   KeyVector points;
   std::vector<RiseRunVector> slopes;
 
-
   static int numMissed(const std::vector<Point>& set, int cap, Line line) {
     // return the number missed up to cap
     int missed = 0;
@@ -244,38 +281,6 @@ class InterpolationSet : public IBase {
       missed += !hit(line, set[j]);
     }
     return missed;
-  }
-
-  using UtilityFn = int(const std::vector<Point>&, int, Line);
-
-  Line bestLineFrom(const Point p, const std::vector<Point>& set, int cap,
-      UtilityFn fn) {
-    Line best_line(p);
-    for (auto [right, min_missed] = std::tuple{set.crbegin(), cap};
-        right != set.crend(); right++) {
-      if (right->x == p.x) continue;
-      Line line(p, *right); // should include epsilon
-      int missed = fn(set, min_missed, line);
-      if (missed < min_missed) {
-        best_line = line;
-        min_missed = missed;
-      }
-    }
-    return best_line;
-  }
-
-  Line bestLine(const std::vector<Point>& set, UtilityFn fn) {
-    Line best_line(set[0]);
-    for (auto [left, min_missed] = std::tuple{set.cbegin(), set.size()};
-        left != set.cend(); left++) {
-      Line line = bestLineFrom(*left, set, min_missed, numMissed);
-      int missed = numMissed(set, min_missed, line);
-      if (missed < min_missed) {
-        best_line = line;
-        min_missed = missed;
-      }
-    }
-    return best_line;
   }
 
   Line removeBestCoveringLine(std::vector<Point>& set) {
@@ -323,6 +328,7 @@ class InterpolationSet : public IBase {
 using InterpolationNaive = Interpolation<IBase::Float<>,IBase::Recurse, LinearUnroll<>>;
 using InterpolationPrecompute = Interpolation<IBase::Float<IBase::Precompute>,IBase::Recurse,LinearUnroll<>>;
 using InterpolationRecurseGuard = Interpolation<IBase::Float<IBase::Precompute>, IBase::Recurse, LinearUnroll<>, 32, false>;
+using i_slope = Interpolation<IBase::Float<IBase::Precompute, true>, IBase::Recurse, LinearUnroll<>, 32, false>;
 using InterpolationRecurse3 = Interpolation<IBase::Float<IBase::Precompute>, 3>;
 using InterpolationRecurseLut = Interpolation<IBase::Lut<>, IBase::Recurse, LinearUnroll<>, 32, false>;
 using InterpolationLinearFp = Interpolation<IBase::Float<IBase::Precompute>>;
